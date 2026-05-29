@@ -1,0 +1,47 @@
+schema_version: "mem-router.backend-route-template.v1"
+template_id: "openviking.personal_fact_lookup.en.v1"
+version: "1.0"
+status: "disabled"
+
+target:
+  primary_backend_id: "openviking_memory_backend"
+  secondary_backend_ids: []
+
+intent_family:
+  name: "personal_fact_lookup"
+  description: "用户询问关于自己或已知人物的具体事实、物品、状态、profile 信息，而非偏好或时间线。"
+
+semantic_card: >
+  适合用户查询具体事实类记忆：读过的书、拥有的物品、某个状态、
+  个人履历细节等。问题通常以 what/where/which 开头，涉及具体对象。
+
+query_prototypes:
+  - "What books has Tim read?"
+  - "What schools did John play basketball in?"
+  - "Where do I currently keep my old sneakers?"
+  - "What was the amount I was pre-approved for when I got my mortgage?"
+  - "What did Dave discuss with the artist he met at the gala?"
+  - "What play did I attend at the local community theater?"
+  - "What damages have happened to John's car?"
+  - "What causes has John done events for?"
+  - "Which US state was Sam travelling in during October 2023?"
+
+hard_negatives:
+  - query: "When did Jon visit networking events for his store?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Temporal fact, not personal object/fact lookup"
+  - query: "Jon 和 Gina 是什么关系？"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Relation query, not personal fact"
+
+thresholds:
+  accept: 0.76
+  fallback: 0.64
+  margin: 0.04
+  hard_negative_margin: 0.03
+  hard_negative_penalty: 0.06
+
+calibration:
+  min_positive_examples: 20
+  min_hard_negatives: 15
+  expected_fallback_rate: 0.10

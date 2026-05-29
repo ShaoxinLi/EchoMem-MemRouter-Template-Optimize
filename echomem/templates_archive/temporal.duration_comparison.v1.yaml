@@ -1,0 +1,119 @@
+schema_version: "mem-router.backend-route-template.v1"
+template_id: "temporal.duration_comparison.v1"
+version: "2.0"
+status: "disabled"
+
+target:
+  primary_backend_id: "temporal_memory_backend"
+  secondary_backend_ids: []
+
+intent_family:
+  name: "duration_comparison"
+  description: "Queries requiring elapsed-time calculation, duration comparison, or distance between two remembered events."
+
+semantic_card: >
+  Use this template when the query asks how much time passed, how long
+  something lasted, or how many hours/days/weeks/months/years were involved.
+  Covers both elapsed time between two remembered events and personal task
+  durations where time itself is the core answer.
+
+query_prototypes:
+  # Generic elapsed-time questions
+  - "How many days ago did EVENT_X happen?"
+  - "How many weeks ago did I start using TOOL_X?"
+  - "How many months have passed since EVENT_X?"
+  - "How many years ago did PERSON_A do ACTION_X?"
+  - "How long ago did PERSON_A start ACTIVITY_X?"
+  - "How long did PERSON_A and PERSON_B date before EVENT_X?"
+  - "How long did STATE_X last?"
+  - "How many days passed between EVENT_A and EVENT_B?"
+  - "How many weeks passed between EVENT_A and EVENT_B?"
+  - "How many months passed between EVENT_A and EVENT_B?"
+  - "How many days had passed since EVENT_A when EVENT_B happened?"
+  - "How many weeks had passed since EVENT_A when EVENT_B happened?"
+  - "How many months before EVENT_B did EVENT_A happen?"
+  - "How many days before I bought ITEM_X did I attend EVENT_Y?"
+  - "How many weeks after EVENT_A did EVENT_B happen?"
+  - "How far apart were EVENT_A and EVENT_B?"
+  - "What was the time gap between EVENT_A and EVENT_B?"
+  - "What was the interval between EVENT_A and EVENT_B?"
+  - "How much time passed from EVENT_A to EVENT_B?"
+  - "How long after joining did PERSON_A complete TASK_X?"
+  # Benchmark-style elapsed-time questions
+  - "How many months have passed since I participated in two charity events in a row, on consecutive days?"
+  - "How many weeks ago did I start using the cashback app Ibotta?"
+  - "How many weeks passed between Maria adopting Coco and Shadow?"
+  - "How many months before my anniversary did Rachel get engaged?"
+  - "How many days had passed since I bought my Adidas running shoes when I realized one shoelace had broken?"
+  - "How many days had passed since I finished reading The Seven Husbands of Evelyn Hugo when I attended the book reading event?"
+  - "How long did James and Samantha date before deciding to move in together?"
+  - "How many days ago did I go on a whitewater rafting trip in the Oregon mountains?"
+  - "How many days before I bought the iPhone 13 Pro did I attend the Holiday Market?"
+  - "How many days had passed between the Hindu festival of Holi and the Sunday mass?"
+  # Slot-style variants
+  - "How many DAYS_UNITS passed between PERSONAL_EVENT_A and PERSONAL_EVENT_B?"
+  - "How long before TARGET_EVENT did SOURCE_EVENT occur?"
+  - "How long after SOURCE_EVENT did TARGET_EVENT occur?"
+  - "How much time has passed since MEMORY_EVENT_X?"
+  - "How long was it from DATE_ANCHOR_X to EVENT_Y?"
+  # Personal task durations
+  - "How many hours did I spend watching documentaries on Netflix last month?"
+  - "How many hours did I spend practicing piano this week?"
+  - "How many hours have I spent reading this year?"
+  - "How long did it take me to assemble the IKEA bookshelf?"
+  - "How long did I spend learning to play the guitar?"
+  - "How much time did it take to finish the puzzle?"
+  - "How long did I wait for the decision on my asylum application?"
+  # Chinese generic anchors for cross-lingual coverage
+  - "两件事之间隔了多久？"
+  - "从某件事到另一件事过去了多少天？"
+  - "某件事发生在另一件事之前多久？"
+  - "我多久以前做过这件事？"
+  - "某个状态持续了多长时间？"
+
+hard_negatives:
+  - query: "When did PERSON_A buy ITEM_X?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Timestamp lookup, not elapsed-time calculation."
+  - query: "Where was PERSON_A on DATE_X?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Date-constrained fact lookup, not duration comparison."
+  - query: "Which event happened first, EVENT_A or EVENT_B?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Ordering/sequence query, not duration calculation."
+  - query: "What is the order of these events?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Sequence reasoning, not elapsed-time calculation."
+  - query: "What books has PERSON_A read?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Personal fact lookup, not duration comparison."
+  - query: "What items did PERSON_A buy in March?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Time-filtered personal fact, not duration calculation."
+  - query: "How many fish did I catch?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Quantity fact, not elapsed-time calculation."
+  - query: "What relationship does PERSON_A have with PERSON_B?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Entity relation, not duration comparison."
+  - query: "What caused split-brain dedupe?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Causal graph query, not duration comparison."
+  - query: "Which field anchors cross-system sync?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Technical dependency graph, not time interval."
+  - query: "How many years was he with his team during high school?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Personal biography fact (person-entity relation), not duration query."
+
+thresholds:
+  accept: 0.66
+  fallback: 0.56
+  margin: 0.04
+  hard_negative_margin: 0.03
+  hard_negative_penalty: 0.06
+
+calibration:
+  min_positive_examples: 30
+  min_hard_negatives: 15
+  expected_fallback_rate: 0.20

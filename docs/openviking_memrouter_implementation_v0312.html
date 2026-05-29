@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenViking 0.3.12 侧 MemRouter 对接实现方案</title>
+<style>
+  :root {
+    --bg: #0d1117; --fg: #c9d1d9; --muted: #8b949e;
+    --accent: #58a6ff; --accent2: #3fb950; --accent3: #f85149;
+    --accent4: #d2a8ff; --accent5: #ffa657; --border: #30363d;
+    --card: #161b22; --code: #1f2937;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:0; background:var(--bg); color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans SC",sans-serif;
+    line-height:1.7; }
+  header { border-bottom:1px solid var(--border); padding:2rem 1.5rem 1.5rem; text-align:center; }
+  h1 { margin:0 0 .5rem; font-size:1.7rem; color:#f0f6fc; }
+  .subtitle { color:var(--muted); font-size:.95rem; }
+  main { max-width:1100px; margin:0 auto; padding:1.5rem; }
+  h2 { color:var(--accent); border-bottom:1px solid var(--border); padding-bottom:.4rem; margin-top:2rem; font-size:1.25rem; }
+  h3 { color:var(--accent4); margin-top:1.6rem; font-size:1.05rem; }
+  h4 { color:var(--accent5); margin-top:1.2rem; font-size:1rem; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:1.2rem; margin:1rem 0; }
+  .tag { display:inline-block; padding:.15rem .5rem; border-radius:999px; font-size:.78rem; font-weight:600;
+    margin-right:.35rem; margin-bottom:.35rem; background:#21262d; color:var(--accent); border:1px solid var(--border); }
+  .tag.green { color:var(--accent2); } .tag.red { color:var(--accent3); }
+  .tag.purple { color:var(--accent4); } .tag.orange { color:var(--accent5); }
+  code, pre { font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; font-size:.88rem; }
+  code { background:var(--code); padding:.15rem .35rem; border-radius:4px; color:#e6edf3; }
+  pre { background:var(--code); padding:1rem; border-radius:8px; overflow-x:auto; border:1px solid var(--border); }
+  table { width:100%; border-collapse:collapse; margin:1rem 0; font-size:.92rem; }
+  th, td { border:1px solid var(--border); padding:.6rem .8rem; text-align:left; }
+  th { background:#1c2128; color:var(--accent); font-weight:600; }
+  tr:nth-child(even) { background:#11161d; }
+  ul { padding-left:1.3rem; } li { margin:.35rem 0; }
+  .warn { color:var(--accent3); } .tip { color:var(--accent4); } .highlight { color:var(--accent2); font-weight:600; }
+  .badge { display:inline-block; padding:.1rem .4rem; border-radius:4px; font-size:.75rem; font-weight:600; }
+  .badge.new { background:rgba(88,166,255,.15); color:var(--accent); }
+  .badge.mod { background:rgba(255,166,87,.15); color:var(--accent5); }
+  .seq { display:flex; flex-direction:column; gap:.3rem; margin:1rem 0; }
+  .seq-row { display:flex; align-items:center; gap:.8rem; }
+  .seq-label { min-width:200px; text-align:right; color:var(--muted); font-size:.85rem; }
+  .seq-box { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:.5rem .8rem; font-size:.9rem; flex:1; }
+  .file-path { color:var(--accent5); font-family:monospace; font-size:.9rem; }
+  footer { text-align:center; padding:2rem 1rem; color:var(--muted); font-size:.85rem; border-top:1px solid var(--border); margin-top:2rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>OpenViking 0.3.12 侧 MemRouter 对接实现方案</h1>
+  <div class="subtitle">基于 OpenViking 0.3.12/0.3.16 真实代码结构的 fast path 实现</div>
+</header>
+
+<main>
+
+<section class="card">
+  <h2>一、OpenViking 现有检索链路（Baseline）</h2>
+  <p>先理解 OpenViking 现有的两条检索路径，才能知道 fast path 该插在哪里。</p>
+
+  <h3>1.1 链路 A：Find（无 Session）</h3>
+  <div class="seq">
+    <div class="seq-row"><div class="seq-label">HTTP Router</div><div class="seq-box">server/routers/search.py::find() → POST /api/v1/search/find</div></div>
+    <div class="seq-row"><div class="seq-label">SearchService</div><div class="seq-box">service/search_service.py::find() → viking_fs.find()</div></div>
+    <div class="seq-row"><div class="seq-label">VikingFS</div><div class="seq-box">storage/viking_fs.py::find() → 直接构造 TypedQuery(intent="")</div></div>
+    <div class="seq-row"><div class="seq-label">HierarchicalRetriever</div><div class="seq-box">retrieve/hierarchical_retriever.py::retrieve(typed_query) → 向量检索</div></div>
+    <div class="seq-row"><div class="seq-label">返回</div><div class="seq-box">FindResult(memories, resources, skills) — <span class="highlight">0 VLM tokens</span></div></div>
+  </div>
+
+  <h3>1.2 链路 B：Search（有 Session）</h3>
+  <div class="seq">
+    <div class="seq-row"><div class="seq-label">HTTP Router</div><div class="seq-box">server/routers/search.py::search() → POST /api/v1/search/search</div></div>
+    <div class="seq-row"><div class="seq-label">SearchService</div><div class="seq-box">service/search_service.py::search() → viking_fs.search(session=...)</div></div>
+    <div class="seq-row"><div class="seq-label">VikingFS</div><div class="seq-box">storage/viking_fs.py::search() → <span class="warn">IntentAnalyzer.analyze()</span> 生成 QueryPlan</div></div>
+    <div class="seq-row"><div class="seq-label">IntentAnalyzer</div><div class="seq-box">retrieve/intent_analyzer.py → VLM 调用 (~3K-15K tokens)</div></div>
+    <div class="seq-row"><div class="seq-label">HierarchicalRetriever</div><div class="seq-box">retrieve/hierarchical_retriever.py::retrieve(typed_query) → 向量检索</div></div>
+    <div class="seq-row"><div class="seq-label">返回</div><div class="seq-box">FindResult(memories, resources, skills, query_plan)</div></div>
+  </div>
+
+  <h3>1.3 关键结论</h3>
+  <ul>
+    <li><code>find</code> 已经<strong>不调用</strong> IntentAnalyzer，但 intent=""，检索策略很简单。</li>
+    <li><code>search</code> 在<strong>有 session 时</strong>才会调用 IntentAnalyzer；无 session 时行为和 find 类似。</li>
+    <li>MemRouter 的 fast path 目标：<strong>在 search 链路中跳过 IntentAnalyzer.analyze()，直接用 MemRouter 预计算的 typed_query</strong>。</li>
+  </ul>
+</section>
+
+<h2>二、需要新增/修改的模块</h2>
+
+<table>
+  <tr>
+    <th style="width:35%">文件</th>
+    <th>操作</th>
+    <th>说明</th>
+  </tr>
+  <tr>
+    <td><span class="file-path">openviking/service/search_service.py</span></td>
+    <td><span class="badge mod">修改</span></td>
+    <td>新增 <code>execute_instruction()</code> 方法，绕过 IntentAnalyzer</td>
+  </tr>
+  <tr>
+    <td><span class="file-path">openviking/server/routers/search.py</span></td>
+    <td><span class="badge mod">修改</span></td>
+    <td>新增 <code>POST /api/v1/search/execute_instruction</code></td>
+  </tr>
+  <tr>
+    <td><span class="file-path">openviking_cli/client/http.py</span></td>
+    <td><span class="badge mod">修改</span></td>
+    <td>新增 <code>execute_instruction()</code> 方法</td>
+  </tr>
+  <tr>
+    <td><span class="file-path">openviking_cli/retrieve/types.py</span></td>
+    <td><span class="badge mod">修改</span></td>
+    <td>新增 <code>InstructionRequest</code> Pydantic 模型</td>
+  </tr>
+</table>
+
+<h2>三、详细实现</h2>
+
+<div class="card">
+  <h3>3.1 新增请求模型 — openviking_cli/retrieve/types.py <span class="badge mod">修改</span></h3>
+  <p>在现有类型文件末尾追加，与 MemRouter 的 <code>BackendQueryInstruction</code> 对齐。</p>
+  <pre>"""ExecuteInstructionRequest — for MemRouter fast path."""
+
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
+
+
+class InstructionTypedQuery(BaseModel):
+    """Typed query generated by MemRouter."""
+
+    query: str
+    context_type: str = "memory"
+    intent: Optional[str] = None
+    priority: int = 1
+    entities: Optional[List[str]] = None
+
+
+class ExecuteInstructionRequest(BaseModel):
+    """Request body for POST /api/v1/search/execute_instruction.
+
+    Mirrors MemRouter's BackendQueryInstruction but is self-contained
+    for OpenViking's API contract.
+    """
+
+    query: str
+    search_mode: str = Field(default="find", pattern=r"^(find|search)$")
+    skip_intent_analysis: bool = True
+    target_uri: Optional[Union[str, List[str]]] = None
+    context_type: Optional[str] = "memory"
+    level: Optional[List[int]] = None
+    limit: int = Field(default=10, ge=1, le=100)
+    score_threshold: Optional[float] = None
+    typed_query: Optional[InstructionTypedQuery] = None
+    filter: Optional[Dict[str, Any]] = None
+
+    class Config:
+        extra = "allow"  # 允许 MemRouter 未来新增字段不报错
+</pre>
+</div>
+
+<div class="card">
+  <h3>3.2 核心服务 — openviking/service/search_service.py <span class="badge mod">修改</span></h3>
+  <p>在 <code>SearchService</code> 中新增 <code>execute_instruction()</code>。该方法<strong>完全绕过 IntentAnalyzer</strong>，直接构造 TypedQuery 并调用 retriever。</p>
+  <pre>"""Add execute_instruction to SearchService for MemRouter fast path."""
+
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+
+from openviking.core.uri_validation import validate_optional_viking_uris
+from openviking.server.identity import RequestContext
+from openviking.storage.viking_fs import VikingFS
+from openviking_cli.exceptions import InvalidArgumentError, NotInitializedError
+from openviking_cli.retrieve.types import ContextType, FindResult, TypedQuery
+from openviking_cli.utils import get_logger
+
+if TYPE_CHECKING:
+    from openviking.session import Session
+
+logger = get_logger(__name__)
+
+
+# ---- Existing SearchService class ----
+
+class SearchService:
+    """Semantic search service."""
+
+    def __init__(self, viking_fs: Optional[VikingFS] = None):
+        self._viking_fs = viking_fs
+
+    def set_viking_fs(self, viking_fs: VikingFS) -> None:
+        self._viking_fs = viking_fs
+
+    def _ensure_initialized(self) -> VikingFS:
+        if not self._viking_fs:
+            raise NotInitializedError("VikingFS")
+        return self._viking_fs
+
+    # ---- Existing methods (search, find) unchanged ----
+
+    async def search(...): ...
+    async def find(...): ...
+
+    # ---- NEW: execute_instruction for MemRouter fast path ----
+
+    async def execute_instruction(
+        self,
+        query: str,
+        ctx: RequestContext,
+        target_uri: Union[str, List[str]] = "",
+        search_mode: str = "find",
+        context_type: Optional[str] = "memory",
+        limit: int = 10,
+        score_threshold: Optional[float] = None,
+        filter: Optional[Dict] = None,
+        typed_query: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        """Execute a pre-computed instruction without IntentAnalyzer.
+
+        This is the fast path for MemRouter-confident queries.
+        All intent analysis has already been done by MemRouter;
+        OpenViking only needs to execute the retrieval.
+
+        Args:
+            query: Raw user query
+            ctx: Request context (for ACL / telemetry)
+            target_uri: Target directory URI(s)
+            search_mode: "find" or "search" (determines session handling)
+            context_type: "memory" | "resource" | "skill"
+            limit: Max results
+            score_threshold: Score threshold
+            filter: Metadata filters
+            typed_query: Optional MemRouter-generated typed query dict
+                containing intent, priority, entities, etc.
+
+        Returns:
+            FindResult — same shape as search() / find()
+        """
+        _ensure_non_empty_query(query)
+        target_uri = validate_optional_viking_uris(target_uri, field_name="target_uri")
+        viking_fs = self._ensure_initialized()
+
+        # Map string context_type to ContextType enum
+        ctx_type_map = {
+            "memory": ContextType.MEMORY,
+            "resource": ContextType.RESOURCE,
+            "skill": ContextType.SKILL,
+        }
+        ctx_type = ctx_type_map.get(context_type or "memory", ContextType.MEMORY)
+
+        # Build TypedQuery from instruction (skip IntentAnalyzer entirely)
+        intent = ""
+        priority = 1
+        if typed_query:
+            intent = typed_query.get("intent", "")
+            priority = typed_query.get("priority", 1)
+
+        target_uri_list = [target_uri] if isinstance(target_uri, str) else (target_uri or [])
+
+        typed_queries = [
+            TypedQuery(
+                query=query,
+                context_type=ctx_type,
+                intent=intent,
+                priority=priority,
+                target_directories=target_uri_list,
+            )
+        ]
+
+        # Retrieve (same logic as VikingFS.search / find)
+        from openviking.retrieve.hierarchical_retriever import HierarchicalRetriever
+
+        storage = viking_fs._get_vector_store()
+        embedder = viking_fs._get_embedder()
+        retriever = HierarchicalRetriever(
+            storage=storage,
+            embedder=embedder,
+            rerank_config=viking_fs.rerank_config,
+            retrieval_config=viking_fs.retrieval_config,
+        )
+
+        async def _execute(tq: TypedQuery):
+            real_ctx = viking_fs._ctx_or_default(ctx)
+            return await retriever.retrieve(
+                tq,
+                ctx=real_ctx,
+                limit=limit,
+                score_threshold=score_threshold,
+                scope_dsl=filter,
+            )
+
+        query_results = await asyncio.gather(*[_execute(tq) for tq in typed_queries])
+
+        # Aggregate results to FindResult (same as VikingFS.search)
+        memories, resources, skills = [], [], []
+        for result in query_results:
+            for matched in result.matched_contexts:
+                if matched.context_type == ContextType.MEMORY:
+                    memories.append(matched)
+                elif matched.context_type == ContextType.RESOURCE:
+                    resources.append(matched)
+                elif matched.context_type == ContextType.SKILL:
+                    skills.append(matched)
+
+        find_result = FindResult(
+            memories=memories,
+            resources=resources,
+            skills=skills,
+            query_results=query_results,
+        )
+        return find_result
+</pre>
+
+  <p><span class="tip">设计要点：</span></p>
+  <ul>
+    <li>直接复用 <code>VikingFS</code> 的 storage、embedder、retriever 初始化逻辑，确保缓存/ACL/审计不受影响。</li>
+    <li><code>typed_query</code> 来自 MemRouter 的 instruction，其中 <code>intent</code> 和 <code>priority</code> 直接注入 <code>TypedQuery</code>。</li>
+    <li>结果聚合逻辑与 <code>VikingFS.search()</code> 完全一致，输出格式完全相同。</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h3>3.3 HTTP 路由 — openviking/server/routers/search.py <span class="badge mod">修改</span></h3>
+  <p>在现有 search router 中新增 <code>POST /api/v1/search/execute_instruction</code>。</p>
+  <pre>"""Add execute_instruction endpoint to search router."""
+
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Optional, Union
+
+from openviking.server.auth import get_request_context
+from openviking.server.dependencies import get_service
+from openviking.server.identity import RequestContext
+from openviking.server.models import Response
+from openviking.server.telemetry import run_operation
+from openviking.telemetry import TelemetryRequest
+from openviking.utils.search_filters import merge_time_filter
+from openviking_cli.exceptions import InvalidArgumentError
+
+
+# ---- Existing classes (FindRequest, SearchRequest, etc.) ----
+
+# ---- NEW: ExecuteInstructionRequest ----
+
+class ExecuteInstructionRequest(BaseModel):
+    """Request for execute_instruction (MemRouter fast path)."""
+
+    query: str
+    search_mode: str = Field(default="find", pattern=r"^(find|search)$")
+    skip_intent_analysis: bool = True
+    target_uri: Optional[Union[str, List[str]]] = None
+    context_type: Optional[str] = "memory"
+    level: Optional[List[int]] = None
+    limit: int = Field(default=10, ge=1, le=100)
+    score_threshold: Optional[float] = None
+    typed_query: Optional[Dict[str, Any]] = None
+    filter: Optional[Dict[str, Any]] = None
+    telemetry: TelemetryRequest = False
+
+
+# ---- Existing endpoints (/find, /search, /grep, /glob) unchanged ----
+
+# ---- NEW: /execute_instruction ----
+
+@router.post("/execute_instruction")
+async def execute_instruction(
+    request: ExecuteInstructionRequest,
+    _ctx: RequestContext = Depends(get_request_context),
+):
+    """Execute a pre-computed memory query instruction (MemRouter fast path).
+
+    This endpoint bypasses IntentAnalyzer entirely. The caller (MemRouter)
+    is responsible for having already determined:
+        - target_uri
+        - search_mode (find / search)
+        - context_type (memory / resource / skill)
+        - intent, priority (via typed_query)
+    """
+    service = get_service()
+    actual_limit = node_limit if node_limit is not None else request.limit
+
+    execution = await run_operation(
+        operation="search.execute_instruction",
+        telemetry=request.telemetry,
+        fn=lambda: service.search.execute_instruction(
+            query=request.query,
+            ctx=_ctx,
+            target_uri=request.target_uri or "",
+            search_mode=request.search_mode,
+            context_type=request.context_type,
+            limit=actual_limit,
+            score_threshold=request.score_threshold,
+            filter=request.filter,
+            typed_query=request.typed_query,
+        ),
+    )
+
+    result = execution.result
+    if hasattr(result, "to_dict"):
+        result = result.to_dict(include_provenance=False)
+    result = _sanitize_floats(result)
+    return Response(
+        status="ok",
+        result=result,
+        telemetry=execution.telemetry,
+    ).model_dump(exclude_none=True)
+</pre>
+</div>
+
+<div class="card">
+  <h3>3.4 HTTP 客户端 — openviking_cli/client/http.py <span class="badge mod">修改</span></h3>
+  <p>在 <code>AsyncHTTPClient</code> 中新增 <code>execute_instruction()</code>，使 MemRouterVikingClient 可以一行调用。</p>
+  <pre>"""Add execute_instruction to AsyncHTTPClient."""
+
+# ---- Existing imports ----
+from openviking_cli.retrieve.types import FindResult
+
+
+class AsyncHTTPClient(BaseClient):
+    # ---- Existing __init__, initialize, close, etc. unchanged ----
+
+    # ---- Existing methods (find, search, grep, glob) unchanged ----
+
+    # ---- NEW: execute_instruction for MemRouter fast path ----
+
+    async def execute_instruction(
+        self,
+        instruction: Dict[str, Any],
+    ) -> FindResult:
+        """Execute a pre-computed BackendQueryInstruction (MemRouter fast path).
+
+        Args:
+            instruction: Dictionary conforming to ExecuteInstructionRequest.
+                Expected keys:
+                    - query: str
+                    - search_mode: str ("find" | "search")
+                    - skip_intent_analysis: bool
+                    - target_uri: Optional[str | List[str]]
+                    - context_type: Optional[str]
+                    - level: Optional[List[int]]
+                    - limit: int
+                    - score_threshold: Optional[float]
+                    - typed_query: Optional[dict]
+                    - filter: Optional[dict]
+
+        Returns:
+            FindResult with memories, resources, skills.
+
+        Raises:
+            httpx.HTTPStatusError: If server returns 4xx/5xx.
+            OpenVikingError: If response contains error status.
+        """
+        response = await self._http.post(
+            "/api/v1/search/execute_instruction",
+            json=instruction,
+        )
+        response_data = self._handle_response_data(response)
+        return FindResult.from_dict(response_data.get("result") or {})
+</pre>
+
+  <p><span class="tip">注意：</span>MemRouterVikingClient 通过 <code>self._viking.client</code> 访问 HTTP client。如果 <code>VikingClient</code> 使用 <code>_client</code> 私有属性，需要在 <code>VikingClient</code> 中暴露一个 <code>client</code> property，或者修改 MemRouterVikingClient 同时尝试 <code>client</code> 和 <code>_client</code>。</p>
+</div>
+
+<h2>四、Fast Path 完整调用链</h2>
+
+<div class="card">
+  <h3>4.1 时序图（MemRouter 高置信命中 → skip_intent_analysis=true）</h3>
+  <div class="seq">
+    <div class="seq-row"><div class="seq-label">MemRouterVikingClient</div><div class="seq-box">pipeline.route("What did Calvin buy?") → BackendQueryInstruction</div></div>
+    <div class="seq-row"><div class="seq-label">↓</div><div class="seq-box">backend_id="openviking_memory_backend", skip_intent_analysis=true</div></div>
+    <div class="seq-row"><div class="seq-label">MemRouterVikingClient</div><div class="seq-box">self._viking.client.execute_instruction(inst_dict)</div></div>
+    <div class="seq-row"><div class="seq-label">AsyncHTTPClient</div><div class="seq-box">POST /api/v1/search/execute_instruction</div></div>
+    <div class="seq-row"><div class="seq-label">Search Router</div><div class="seq-box">server/routers/search.py::execute_instruction()</div></div>
+    <div class="seq-row"><div class="seq-label">SearchService</div><div class="seq-box">service/search_service.py::execute_instruction()</div></div>
+    <div class="seq-row"><div class="seq-label">SearchService</div><div class="seq-box">直接构造 TypedQuery(intent=memrouter_intent, priority=memrouter_priority)</div></div>
+    <div class="seq-row"><div class="seq-label">SearchService</div><div class="seq-box">HierarchicalRetriever.retrieve(typed_query) → <span class="highlight">0 VLM tokens</span></div></div>
+    <div class="seq-row"><div class="seq-label">SearchService</div><div class="seq-box">聚合为 FindResult → 返回</div></div>
+    <div class="seq-row"><div class="seq-label">MemRouterVikingClient</div><div class="seq-box">注入 _memrouter_meta{"skip_intent_analysis": true} → 返回给 Agent</div></div>
+  </div>
+
+  <h3>4.2 与现有链路的对比</h3>
+  <table>
+    <tr>
+      <th>维度</th>
+      <th>现有 search()（有 session）</th>
+      <th>现有 find()（无 session）</th>
+      <th>新增 execute_instruction()</th>
+    </tr>
+    <tr>
+      <td>IntentAnalyzer</td>
+      <td><span class="warn">调用（~3K-15K tokens）</span></td>
+      <td>不调用</td>
+      <td><span class="highlight">不调用</span></td>
+    </tr>
+    <tr>
+      <td>TypedQuery intent</td>
+      <td>由 LLM 生成</td>
+      <td>固定 ""</td>
+      <td>由 MemRouter 提供</td>
+    </tr>
+    <tr>
+      <td>TypedQuery priority</td>
+      <td>由 LLM 生成</td>
+      <td>固定 3</td>
+      <td>由 MemRouter 提供</td>
+    </tr>
+    <tr>
+      <td>Session context</td>
+      <td>消费 session</td>
+      <td>不消费</td>
+      <td>不消费（无状态）</td>
+    </tr>
+    <tr>
+      <td>结果格式</td>
+      <td>FindResult</td>
+      <td>FindResult</td>
+      <td>FindResult（完全一致）</td>
+    </tr>
+  </table>
+</div>
+
+<h2>五、向后兼容</h2>
+
+<div class="card">
+  <h3>5.1 兼容性矩阵</h3>
+  <table>
+    <tr><th>MemRouter 版本</th><th>OpenViking 版本</th><th>行为</th></tr>
+    <tr>
+      <td>v1.4+</td>
+      <td>无 execute_instruction</td>
+      <td>MemRouterVikingClient 捕获 <code>AttributeError</code>，自动降级为 <code>find()</code>。功能正常，但 IntentAnalyzer 未被跳过。</td>
+    </tr>
+    <tr>
+      <td>v1.4+</td>
+      <td>有 execute_instruction</td>
+      <td><span class="highlight">Fast path 生效</span>。skip_intent_analysis=true 时 0 VLM tokens。</td>
+    </tr>
+  </table>
+
+  <h3>5.2 渐进上线</h3>
+  <ol>
+    <li><strong>Phase 1</strong>：在 OpenViking 侧部署 execute_instruction endpoint，内部测试。</li>
+    <li><strong>Phase 2</strong>：灰度验证。对比 fast path 和 normal path 的结果一致性（召回率、排序、格式）。</li>
+    <li><strong>Phase 3</strong>：全量启用。将 MemRouterVikingClient 作为 VikingClient 的默认包装层。</li>
+    <li><strong>Phase 4</strong>：扩展模板覆盖。随着模板覆盖更多 intent family，扩大 skip_intent_analysis=true 的场景。</li>
+  </ol>
+</div>
+
+<h2>六、验证清单</h2>
+
+<div class="card">
+  <h3>6.1 OpenViking 侧单测</h3>
+  <pre>import pytest
+from openviking.service.search_service import SearchService
+from openviking_cli.retrieve.types import ContextType
+
+
+@pytest.mark.asyncio
+async def test_execute_instruction_fast_path(mock_viking_fs):
+    """Test execute_instruction bypasses IntentAnalyzer."""
+    service = SearchService(viking_fs=mock_viking_fs)
+
+    result = await service.execute_instruction(
+        query="What did Calvin buy in March 2023?",
+        ctx=mock_request_context,
+        target_uri="viking://memories",
+        search_mode="find",
+        context_type="memory",
+        limit=10,
+        typed_query={
+            "query": "What did Calvin buy in March 2023?",
+            "context_type": "memory",
+            "intent": "personal_fact_lookup",
+            "priority": 1,
+        },
+    )
+
+    assert result.total >= 0
+    # Verify IntentAnalyzer was NOT called
+    mock_viking_fs._get_vector_store.assert_called()
+    # IntentAnalyzer.analyze should never be invoked
+</pre>
+
+  <h3>6.2 端到端集成测试</h3>
+  <pre>async def test_end_to_end_fast_path():
+    """Full integration: MemRouterVikingClient → OpenViking execute_instruction."""
+    viking = VikingClient(agent_id="test")
+    client = MemRouterVikingClient(viking_client=viking)
+    await client.initialize()
+
+    result = await client.search("What did Calvin buy in March 2023?")
+
+    # Fast path indicators
+    assert "_memrouter_meta" in result
+    assert result["_memrouter_meta"]["skip_intent_analysis"] is True
+    assert result["_memrouter_meta"]["route_method"] == "template_embedding"
+
+    # Result content sanity
+    assert "memories" in result
+    assert "total" in result
+</pre>
+</div>
+
+<h2>七、工作量评估</h2>
+
+<div class="card">
+  <table>
+    <tr><th>模块</th><th>行数</th><th>复杂度</th></tr>
+    <tr><td>ExecuteInstructionRequest 模型</td><td>~25 行</td><td>低</td></tr>
+    <tr><td>SearchService.execute_instruction()</td><td>~80 行</td><td>中</td></tr>
+    <tr><td>HTTP endpoint</td><td>~25 行</td><td>低</td></tr>
+    <tr><td>AsyncHTTPClient.execute_instruction()</td><td>~15 行</td><td>低</td></tr>
+    <tr><td>单元测试</td><td>~60 行</td><td>中</td></tr>
+    <tr><td><strong>总计</strong></td><td><strong>~205 行</strong></td><td><strong>中低</strong></td></tr>
+  </table>
+</div>
+
+<h2>八、总结</h2>
+
+<div class="card">
+  <p>基于 OpenViking 0.3.12/0.3.16 真实代码，fast path 只需<strong>三个修改</strong>：</p>
+  <ol>
+    <li><strong>SearchService 新增 <code>execute_instruction()</code></strong>：直接构造 TypedQuery（intent/priority 来自 MemRouter），调用 HierarchicalRetriever.retrieve()，完全绕过 IntentAnalyzer。</li>
+    <li><strong>新增 HTTP endpoint <code>POST /api/v1/search/execute_instruction</code></strong>：接收 instruction，调用 SearchService.execute_instruction()。</li>
+    <li><strong>AsyncHTTPClient 新增 <code>execute_instruction()</code></strong>：让 MemRouterVikingClient 一行调用。</li>
+  </ol>
+  <p>全部修改是<strong>纯新增</strong>，不改动现有 search/find/commit 链路，具备完整向后兼容。</p>
+</div>
+
+</main>
+
+<footer>
+  OpenViking 0.3.12 侧 MemRouter 对接实现方案 · 基于真实代码结构
+</footer>
+
+</body>
+</html>

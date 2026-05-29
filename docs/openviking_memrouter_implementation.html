@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenViking 侧 MemRouter 对接实现方案</title>
+<style>
+  :root {
+    --bg: #0d1117; --fg: #c9d1d9; --muted: #8b949e;
+    --accent: #58a6ff; --accent2: #3fb950; --accent3: #f85149;
+    --accent4: #d2a8ff; --accent5: #ffa657; --border: #30363d;
+    --card: #161b22; --code: #1f2937;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:0; background:var(--bg); color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans SC",sans-serif;
+    line-height:1.7; }
+  header { border-bottom:1px solid var(--border); padding:2rem 1.5rem 1.5rem; text-align:center; }
+  h1 { margin:0 0 .5rem; font-size:1.8rem; color:#f0f6fc; }
+  .subtitle { color:var(--muted); font-size:.95rem; }
+  main { max-width:1100px; margin:0 auto; padding:1.5rem; }
+  h2 { color:var(--accent); border-bottom:1px solid var(--border); padding-bottom:.4rem; margin-top:2rem; font-size:1.3rem; }
+  h3 { color:var(--accent4); margin-top:1.6rem; font-size:1.05rem; }
+  h4 { color:var(--accent5); margin-top:1.2rem; font-size:1rem; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:1.2rem; margin:1rem 0; }
+  .tag { display:inline-block; padding:.15rem .5rem; border-radius:999px; font-size:.78rem; font-weight:600;
+    margin-right:.35rem; margin-bottom:.35rem; background:#21262d; color:var(--accent); border:1px solid var(--border); }
+  .tag.green { color:var(--accent2); } .tag.red { color:var(--accent3); }
+  .tag.purple { color:var(--accent4); } .tag.orange { color:var(--accent5); }
+  code, pre { font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; font-size:.88rem; }
+  code { background:var(--code); padding:.15rem .35rem; border-radius:4px; color:#e6edf3; }
+  pre { background:var(--code); padding:1rem; border-radius:8px; overflow-x:auto; border:1px solid var(--border); }
+  .flow { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; margin:1rem 0; }
+  .flow .node { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:.6rem .9rem; font-size:.9rem; }
+  .flow .arrow { color:var(--muted); font-size:1.2rem; }
+  table { width:100%; border-collapse:collapse; margin:1rem 0; font-size:.92rem; }
+  th, td { border:1px solid var(--border); padding:.6rem .8rem; text-align:left; }
+  th { background:#1c2128; color:var(--accent); font-weight:600; }
+  tr:nth-child(even) { background:#11161d; }
+  ul { padding-left:1.3rem; } li { margin:.35rem 0; }
+  .formula { background:#11161d; border-left:3px solid var(--accent); padding:.8rem 1rem; margin:.8rem 0;
+    border-radius:0 6px 6px 0; font-family:monospace; color:#e6edf3; }
+  .warn { color:var(--accent3); } .tip { color:var(--accent4); } .highlight { color:var(--accent2); font-weight:600; }
+  .badge { display:inline-block; padding:.1rem .4rem; border-radius:4px; font-size:.75rem; font-weight:600; }
+  .badge.rec { background:rgba(59,185,80,.15); color:var(--accent2); }
+  .badge.new { background:rgba(88,166,255,.15); color:var(--accent); }
+  .badge.mod { background:rgba(255,166,87,.15); color:var(--accent5); }
+  .seq { display:flex; flex-direction:column; gap:.3rem; margin:1rem 0; }
+  .seq-row { display:flex; align-items:center; gap:.8rem; }
+  .seq-label { min-width:180px; text-align:right; color:var(--muted); font-size:.85rem; }
+  .seq-box { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:.5rem .8rem; font-size:.9rem; flex:1; }
+  footer { text-align:center; padding:2rem 1rem; color:var(--muted); font-size:.85rem; border-top:1px solid var(--border); margin-top:2rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>OpenViking 侧 MemRouter 对接实现方案</h1>
+  <div class="subtitle">OpenViking 需要新增哪些代码，才能消费 MemRouter 的 BackendQueryInstruction 并启用 fast path</div>
+</header>
+
+<main>
+
+<section class="card">
+  <h2>一、背景与现状</h2>
+  <p>EchoMem MemRouter v1.4 已经实现了完整的 <strong>Query Instruction</strong> 生成能力。当模板匹配高置信命中时，MemRouter 会输出包含 <code>skip_intent_analysis=true</code> 的 <code>BackendQueryInstruction</code>，OpenViking 可据此跳过自身的 VLM IntentAnalyzer（节省 3K-15K tokens）。</p>
+
+  <p><span class="warn">但当前 OpenViking 侧还没有实现消费这些指令的入口。</span> <code>MemRouterVikingClient</code> 在调用 <code>execute_instruction()</code> 时会因 <code>AttributeError</code> 自动降级为 <code>find()</code>，fast path 尚未真正跑通。</p>
+
+  <p>本方案定义 OpenViking 侧需要<strong>新增</strong>和<strong>修改</strong>的代码模块，使 fast path 端到端可用。</p>
+</section>
+
+<h2>二、OpenViking 现有架构回顾</h2>
+
+<div class="card">
+  <h3>2.1 当前调用链路（baseline）</h3>
+  <div class="seq">
+    <div class="seq-row">
+      <div class="seq-label">Agent / VikingBot</div>
+      <div class="seq-box">VikingClient.search(query)</div>
+    </div>
+    <div class="seq-row">
+      <div class="seq-label">VikingClient</div>
+      <div class="seq-box">AsyncHTTPClient.search(payload) → POST /v1/search</div>
+    </div>
+    <div class="seq-row">
+      <div class="seq-label">OpenViking Server</div>
+      <div class="seq-box">Session.search(query) → IntentAnalyzer.analyze(query) → VLM (~3K-15K tokens)</div>
+    </div>
+    <div class="seq-row">
+      <div class="seq-label">OpenViking Server</div>
+      <div class="seq-box">IntentResult → HierarchicalRetriever.retrieve(params) → 记忆结果</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>2.2 期望的 fast path 链路（MemRouter 增强后）</h3>
+  <div class="seq">
+    <div class="seq-row">
+      <div class="seq-label">MemRouterVikingClient</div>
+      <div class="seq-box">MemRouter.route(query) → BackendQueryInstruction (skip_intent_analysis=true)</div>
+    </div>
+    <div class="seq-row">
+      <div class="seq-label">MemRouterVikingClient</div>
+      <div class="seq-box">AsyncHTTPClient.execute_instruction(instruction) → POST /v1/execute_instruction</div>
+    </div>
+    <div class="seq-row">
+      <div class="seq-label">OpenViking Server</div>
+      <div class="seq-box">InstructionExecutor.execute(instruction) → 跳过 IntentAnalyzer，0 VLM tokens</div>
+    </div>
+    <div class="seq-row">
+      <div class="seq-label">OpenViking Server</div>
+      <div class="seq-box">直接调用 HierarchicalRetriever.retrieve(params) → 记忆结果</div>
+    </div>
+  </div>
+</div>
+
+<h2>三、需要新增/修改的模块清单</h2>
+
+<table>
+  <tr>
+    <th>文件/模块</th>
+    <th>操作</th>
+    <th>说明</th>
+  </tr>
+  <tr>
+    <td><code>openviking/core/instruction_executor.py</code></td>
+    <td><span class="badge new">新增</span></td>
+    <td>核心模块。解析 BackendQueryInstruction，直接调用 HierarchicalRetriever</td>
+  </tr>
+  <tr>
+    <td><code>openviking/api/routes.py</code></td>
+    <td><span class="badge mod">修改</span></td>
+    <td>新增 <code>POST /v1/execute_instruction</code> HTTP endpoint</td>
+  </tr>
+  <tr>
+    <td><code>openviking/client/async_http_client.py</code></td>
+    <td><span class="badge mod">修改</span></td>
+    <td>新增 <code>execute_instruction(instruction)</code> 方法</td>
+  </tr>
+  <tr>
+    <td><code>openviking/client/local_client.py</code></td>
+    <td><span class="badge mod">修改</span></td>
+    <td>同上（如果存在本地 client）</td>
+  </tr>
+  <tr>
+    <td><code>openviking/models/query_instruction.py</code></td>
+    <td><span class="badge new">新增</span></td>
+    <td>Pydantic 模型：OpenVikingExecuteInstructionRequest / OpenVikingQueryResult</td>
+  </tr>
+  <tr>
+    <td><code>openviking/core/retriever.py</code></td>
+    <td><span class="badge mod">修改</span></td>
+    <td>确保 HierarchicalRetriever 支持按 instruction 参数直接检索（通常无需改）</td>
+  </tr>
+</table>
+
+<h2>四、详细实现</h2>
+
+<div class="card">
+  <h3>4.1 数据模型：openviking/models/query_instruction.py <span class="badge new">新增</span></h3>
+  <p>定义 OpenViking 侧接收和返回的数据结构。与 MemRouter 的 <code>BackendQueryInstruction</code> 对齐，但只包含 OpenViking 关心的字段。</p>
+  <pre>"""OpenViking Query Instruction models — aligned with MemRouter BackendQueryInstruction."""
+
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
+
+
+class TypedQueryTemplate(BaseModel):
+    """Typed query template generated by MemRouter."""
+
+    query: str
+    context_type: str = "memory"
+    intent: Optional[str] = None
+    priority: int = 1
+    entities: Optional[List[str]] = None
+
+
+class OpenVikingExecuteInstructionRequest(BaseModel):
+    """Request body for POST /v1/execute_instruction.
+
+    Mirrors MemRouter's BackendQueryInstruction but is self-contained
+    for OpenViking's API contract.
+    """
+
+    backend_id: str = Field(default="openviking_memory_backend")
+    query: str
+    search_mode: str = Field(default="find", pattern=r"^(find|search|read|graph)$")
+    skip_intent_analysis: bool = True
+    target_uri: Optional[str] = None
+    context_type: Optional[str] = "memory"
+    level: Optional[List[int]] = None
+    limit: int = Field(default=10, ge=1, le=100)
+    typed_query: Optional[TypedQueryTemplate] = None
+    filter: Optional[Dict[str, Any]] = None
+    # 保留扩展字段
+    extra: Optional[Dict[str, Any]] = None
+
+    class Config:
+        extra = "allow"  # 允许 MemRouter 未来新增字段不报错
+
+
+class MatchedContext(BaseModel):
+    """Single matched memory context — same shape as existing OpenViking output."""
+
+    uri: str
+    context_type: str
+    abstract: str
+    overview: Optional[str] = None
+    category: Optional[str] = None
+    score: float = 0.0
+    match_reason: Optional[str] = None
+    relations: Optional[List[Dict[str, Any]]] = None
+
+
+class OpenVikingQueryResult(BaseModel):
+    """Response for execute_instruction — same shape as existing search/find result."""
+
+    memories: List[MatchedContext] = Field(default_factory=list)
+    resources: List[MatchedContext] = Field(default_factory=list)
+    skills: List[MatchedContext] = Field(default_factory=list)
+    total: int = 0
+    query: str = ""
+    target_uri: Optional[str] = None
+    # Debug metadata for MemRouter observability
+    _execution_meta: Optional[Dict[str, Any]] = Field(default=None, exclude=False)
+
+    def set_meta(self, key: str, value: Any) -> None:
+        if self._execution_meta is None:
+            self._execution_meta = {}
+        self._execution_meta[key] = value
+</pre>
+</div>
+
+<div class="card">
+  <h3>4.2 核心执行器：openviking/core/instruction_executor.py <span class="badge new">新增</span></h3>
+  <p><code>InstructionExecutor</code> 是 fast path 的核心。它接收 MemRouter 的指令，<strong>跳过 IntentAnalyzer</strong>，直接组装检索参数并调用 <code>HierarchicalRetriever</code>。</p>
+
+  <pre>"""InstructionExecutor — execute BackendQueryInstruction without IntentAnalyzer.
+
+This module provides the fast path for MemRouter-confident queries.
+All logic that previously lived in IntentAnalyzer (target_uri selection,
+level selection, search_mode selection) is now pre-computed by MemRouter
+and passed directly via the instruction.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+from openviking.models.query_instruction import (
+    MatchedContext,
+    OpenVikingExecuteInstructionRequest,
+    OpenVikingQueryResult,
+)
+
+if TYPE_CHECKING:
+    from openviking.core.retriever import HierarchicalRetriever
+
+logger = logging.getLogger(__name__)
+
+
+class InstructionExecutor:
+    """Execute a pre-computed instruction against the memory store.
+
+    Design principles:
+        - Zero VLM tokens: never calls IntentAnalyzer.
+        - Reuse existing retriever: all storage access goes through
+          HierarchicalRetriever so that caching, ACL, audit remain intact.
+        - Fail-safe: if any required field is missing, raise a clear error
+          so that MemRouterVikingClient can fallback to normal search().
+    """
+
+    def __init__(self, retriever: HierarchicalRetriever) -> None:
+        self._retriever = retriever
+
+    # ------------------------------------------------------------------ #
+    # Public API
+    # ------------------------------------------------------------------ #
+
+    async def execute(
+        self,
+        request: OpenVikingExecuteInstructionRequest,
+    ) -> OpenVikingQueryResult:
+        """Execute the instruction and return matched contexts.
+
+        Args:
+            request: The instruction produced by MemRouter.
+
+        Returns:
+            OpenVikingQueryResult containing memories/resources/skills.
+
+        Raises:
+            ValueError: If the instruction contains unsupported parameters
+                or missing required fields, signaling MemRouter to fallback.
+        """
+        logger.info(
+            "InstructionExecutor: query='%s' mode=%s uri=%s level=%s",
+            request.query,
+            request.search_mode,
+            request.target_uri,
+            request.level,
+        )
+
+        # Validate minimum required fields
+        if not request.query:
+            raise ValueError("Instruction 'query' is empty")
+
+        # Build retriever parameters from the instruction
+        retrieve_params = self._build_retrieve_params(request)
+
+        # Dispatch by search_mode
+        if request.search_mode == "find":
+            raw_results = await self._retriever.find(**retrieve_params)
+        elif request.search_mode == "search":
+            raw_results = await self._retriever.search(**retrieve_params)
+        elif request.search_mode == "read":
+            raw_results = await self._retriever.read(**retrieve_params)
+        elif request.search_mode == "graph":
+            raw_results = await self._retriever.graph_query(**retrieve_params)
+        else:
+            raise ValueError(f"Unsupported search_mode: {request.search_mode}")
+
+        # Convert raw retriever output to standardized result
+        result = self._convert_to_result(raw_results, request)
+
+        # Attach execution metadata for MemRouter observability
+        result.set_meta("executor", "InstructionExecutor")
+        result.set_meta("skip_intent_analysis", True)
+        result.set_meta("search_mode", request.search_mode)
+
+        logger.info(
+            "InstructionExecutor: returned %d memories, %d resources, %d skills",
+            len(result.memories),
+            len(result.resources),
+            len(result.skills),
+        )
+        return result
+
+    # ------------------------------------------------------------------ #
+    # Internal helpers
+    # ------------------------------------------------------------------ #
+
+    def _build_retrieve_params(
+        self,
+        request: OpenVikingExecuteInstructionRequest,
+    ) -> Dict[str, Any]:
+        """Map instruction fields to HierarchicalRetriever parameters.
+
+        The retriever likely accepts:
+            - query: str
+            - target_uri: str (optional)
+            - context_type: str (optional)
+            - level: list[int] (optional)
+            - limit: int
+            - filter: dict (optional)
+            - typed_query: dict (optional, for tracing/debug)
+        """
+        params: Dict[str, Any] = {
+            "query": request.query,
+            "limit": request.limit,
+        }
+
+        if request.target_uri:
+            params["target_uri"] = request.target_uri
+
+        if request.context_type:
+            params["context_type"] = request.context_type
+
+        if request.level is not None:
+            params["level"] = request.level
+
+        if request.filter:
+            params["filter"] = request.filter
+
+        # typed_query 主要供 tracing / debug 使用，retriever 不直接消费
+        if request.typed_query:
+            params["typed_query"] = request.typed_query.model_dump()
+
+        # Merge any extra params MemRouter may have sent
+        if request.extra:
+            for k, v in request.extra.items():
+                if k not in params:
+                    params[k] = v
+
+        return params
+
+    def _convert_to_result(
+        self,
+        raw_results: Any,
+        request: OpenVikingExecuteInstructionRequest,
+    ) -> OpenVikingQueryResult:
+        """Convert retriever-native output to OpenVikingQueryResult.
+
+        This is a thin adapter layer. If HierarchicalRetriever already returns
+        objects with the same shape, we can pass them through directly.
+        """
+        # Handle dict output (most common)
+        if isinstance(raw_results, dict):
+            return OpenVikingQueryResult(
+                memories=[
+                    MatchedContext(**m) if isinstance(m, dict) else m
+                    for m in raw_results.get("memories", [])
+                ],
+                resources=[
+                    MatchedContext(**r) if isinstance(r, dict) else r
+                    for r in raw_results.get("resources", [])
+                ],
+                skills=[
+                    MatchedContext(**s) if isinstance(s, dict) else s
+                    for s in raw_results.get("skills", [])
+                ],
+                total=raw_results.get("total", 0),
+                query=request.query,
+                target_uri=request.target_uri,
+            )
+
+        # Handle list output (direct list of MatchedContext)
+        if isinstance(raw_results, list):
+            contexts = [
+                MatchedContext(**item) if isinstance(item, dict) else item
+                for item in raw_results
+            ]
+            return OpenVikingQueryResult(
+                memories=contexts,
+                total=len(contexts),
+                query=request.query,
+                target_uri=request.target_uri,
+            )
+
+        # Handle already-modeled output
+        if isinstance(raw_results, OpenVikingQueryResult):
+            return raw_results
+
+        # Fallback — try to coerce from object attributes
+        return OpenVikingQueryResult(
+            memories=[
+                MatchedContext(**m) if isinstance(m, dict) else m
+                for m in getattr(raw_results, "memories", [])
+            ],
+            resources=[
+                MatchedContext(**r) if isinstance(r, dict) else r
+                for r in getattr(raw_results, "resources", [])
+            ],
+            skills=[
+                MatchedContext(**s) if isinstance(s, dict) else s
+                for s in getattr(raw_results, "skills", [])
+            ],
+            total=getattr(raw_results, "total", 0),
+            query=request.query,
+            target_uri=request.target_uri,
+        )
+</pre>
+</div>
+
+<div class="card">
+  <h3>4.3 HTTP API 端点：openviking/api/routes.py <span class="badge mod">修改</span></h3>
+  <p>在现有 FastAPI/HTTP router 中新增 <code>POST /v1/execute_instruction</code> endpoint。</p>
+
+  <pre>"""Add execute_instruction endpoint to existing OpenViking API routes."""
+
+from fastapi import APIRouter, HTTPException
+
+from openviking.core.instruction_executor import InstructionExecutor
+from openviking.core.retriever import HierarchicalRetriever
+from openviking.models.query_instruction import (
+    OpenVikingExecuteInstructionRequest,
+    OpenVikingQueryResult,
+)
+
+router = APIRouter()
+
+# Existing routes ...
+# @router.post("/v1/search")
+# async def search(...)
+
+
+@router.post("/v1/execute_instruction", response_model=OpenVikingQueryResult)
+async def execute_instruction(
+    request: OpenVikingExecuteInstructionRequest,
+) -> OpenVikingQueryResult:
+    """Execute a pre-computed memory query instruction (MemRouter fast path).
+
+    This endpoint bypasses IntentAnalyzer entirely. The caller (MemRouter)
+    is responsible for having already determined:
+        - target_uri
+        - search_mode (find / search / read / graph)
+        - level (which hierarchy levels to query)
+        - context_type
+
+    Args:
+        request: The instruction payload from MemRouter.
+
+    Returns:
+        OpenVikingQueryResult with memories, resources, skills.
+
+    Raises:
+        HTTPException 400: If the instruction is invalid or unsupported.
+        HTTPException 500: If retriever fails internally.
+    """
+    # Obtain the global retriever instance (however your app manages it)
+    retriever = HierarchicalRetriever.get_instance()
+    executor = InstructionExecutor(retriever)
+
+    try:
+        result = await executor.execute(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("InstructionExecutor failed")
+        raise HTTPException(status_code=500, detail="Internal retriever error") from exc
+
+    return result
+</pre>
+</div>
+
+<div class="card">
+  <h3>4.4 客户端 SDK：openviking/client/async_http_client.py <span class="badge mod">修改</span></h3>
+  <p>在 <code>AsyncHTTPClient</code> 中新增 <code>execute_instruction()</code> 方法，使 <code>MemRouterVikingClient</code> 可以直接调用。</p>
+
+  <pre>"""Add execute_instruction to AsyncHTTPClient."""
+
+from typing import Any, Dict
+
+import httpx
+
+
+class AsyncHTTPClient:
+    """Async HTTP client for OpenViking API."""
+
+    def __init__(self, base_url: str, api_key: Optional[str] = None) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self._client = httpx.AsyncClient(
+            base_url=self.base_url,
+            headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
+            timeout=30.0,
+        )
+
+    # ------------------------------------------------------------------ #
+    # Existing methods (search, find, commit, etc.)
+    # ------------------------------------------------------------------ #
+
+    async def search(self, query: str, **kwargs: Any) -> Dict[str, Any]:
+        payload = {"query": query, **kwargs}
+        resp = await self._client.post("/v1/search", json=payload)
+        resp.raise_for_status()
+        return resp.json()
+
+    async def find(self, query: str, target_uri: str = "", **kwargs: Any) -> Dict[str, Any]:
+        payload = {"query": query, "target_uri": target_uri, **kwargs}
+        resp = await self._client.post("/v1/find", json=payload)
+        resp.raise_for_status()
+        return resp.json()
+
+    # ... other existing methods ...
+
+    # ------------------------------------------------------------------ #
+    # NEW: execute_instruction for MemRouter fast path
+    # ------------------------------------------------------------------ #
+
+    async def execute_instruction(self, instruction: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a pre-computed BackendQueryInstruction (MemRouter fast path).
+
+        Args:
+            instruction: Dictionary conforming to OpenVikingExecuteInstructionRequest.
+                Expected keys:
+                    - query: str
+                    - search_mode: str  ("find" | "search" | "read" | "graph")
+                    - skip_intent_analysis: bool
+                    - target_uri: Optional[str]
+                    - context_type: Optional[str]
+                    - level: Optional[List[int]]
+                    - limit: int
+                    - typed_query: Optional[dict]
+                    - filter: Optional[dict]
+
+        Returns:
+            Dictionary with "memories", "resources", "skills", "total", etc.
+
+        Raises:
+            httpx.HTTPStatusError: If server returns 4xx/5xx.
+        """
+        resp = await self._client.post("/v1/execute_instruction", json=instruction)
+        resp.raise_for_status()
+        return resp.json()
+</pre>
+</div>
+
+<div class="card">
+  <h3>4.5 VikingClient 兼容性：确保 client 属性暴露 <span class="badge mod">可选修改</span></h3>
+  <p>MemRouterVikingClient 通过 <code>self._viking.client</code> 访问 HTTP client。需要确保 <code>VikingClient</code> 正确暴露该属性。</p>
+
+  <pre>class VikingClient:
+    """High-level client for OpenViking memory backend."""
+
+    def __init__(self, agent_id: str, base_url: str = "...", api_key: Optional[str] = None):
+        self.agent_id = agent_id
+        # Existing initialization
+        self.client = AsyncHTTPClient(base_url=base_url, api_key=api_key)
+        # ...
+
+    # MemRouterVikingClient expects:
+    #   ov_client = self._viking.client   # -> AsyncHTTPClient
+    #   result = await ov_client.execute_instruction(inst_dict)
+    #
+    # So 'client' must be a public attribute pointing to the transport layer.
+</pre>
+
+  <p><span class="tip">提示：</span> 如果现有 <code>VikingClient</code> 使用 <code>_client</code> 私有属性，建议新增一个 <code>@property client</code> 暴露出来，或者让 MemRouterVikingClient 同时尝试 <code>self._viking.client</code> 和 <code>self._viking._client</code>。</p>
+</div>
+
+<h2>五、与现有架构的边界</h2>
+
+<div class="card">
+  <h3>5.1 不改动的模块（保持原样）</h3>
+  <table>
+    <tr>
+      <th>模块</th>
+      <th>不改动的理由</th>
+    </tr>
+    <tr>
+      <td><code>IntentAnalyzer</code></td>
+      <td>Fast path 直接绕过它；normal path 继续正常使用</td>
+    </tr>
+    <tr>
+      <td><code>HierarchicalRetriever</code> 核心逻辑</td>
+      <td>InstructionExecutor 只是它的调用方，不修改内部实现</td>
+    </tr>
+    <tr>
+      <td><code>Session</code> 管理</td>
+      <td>execute_instruction 是无状态的，不依赖 session 上下文</td>
+    </tr>
+    <tr>
+      <td><code>commit / write</code> 链路</td>
+      <td>MemRouter 是只读路由层，不拦截写入</td>
+    </tr>
+  </table>
+
+  <h3>5.2 新增的边界</h3>
+  <pre>
++------------------+        +---------------------+        +------------------+
+|  MemRouter       |        |  OpenViking         |        |  Storage         |
+|  (EchoMem)       |        |  (this doc)         |        |  (unchanged)     |
++------------------+        +---------------------+        +------------------+
+| BackendQuery     |  --&gt;  | InstructionExecutor |  --&gt;  | Hierarchical     |
+| Instruction      |  HTTP  | .execute(request)   |  call  | Retriever        |
++------------------+        +---------------------+        +------------------+
+                                      |
+                                      v
+                              IntentAnalyzer (bypassed in fast path)
+</pre>
+</div>
+
+<h2>六、MemRouterVikingClient 调用链验证</h2>
+
+<div class="card">
+  <h3>6.1 Fast path（ MemRouter 高置信命中）</h3>
+  <div class="seq">
+    <div class="seq-row">
+      <div class="seq-label">1. MemRouterVikingClient.search()</div>
+      <div class="seq-box">route_result = pipeline.route("What did Calvin buy?")</div>
+    </div>
+    <div class="seq-row">
+      <div class="seq-label">2. 模板命中</div>
+      <div class="seq-box">matched_template_id = "openviking.personal_fact_lookup.en.v2"<br>skip_intent_analysis = true</div>
+    </div>
+    <div class="seq-row">
+      <div class="seq-label">3. 调用 OpenViking</div>
+      <div class="seq-box">ov_client = self._viking.client<br>await ov_client.execute_instruction(inst_dict)  <span class="highlight">← 新接口</span></div>
+    </div>
+    <div class="seq-row">
+      <div class="seq-label">4. OpenViking Server</div>
+      <div class="seq-box">POST /v1/execute_instruction → InstructionExecutor.execute()<br>→ HierarchicalRetriever.find(params)  <span class="highlight">← 0 VLM tokens</span></div>
+    </div>
+    <div class="seq-row">
+      <div class="seq-label">5. 返回结果</div>
+      <div class="seq-box">OpenVikingQueryResult → dict → MemRouterVikingClient._execute_fast()<br>→ 注入 _memrouter_meta{"skip_intent_analysis": true}</div>
+    </div>
+  </div>
+
+  <h3>6.2 Fallback path（低置信或 skip_intent_analysis=false）</h3>
+  <div class="seq">
+    <div class="seq-row">
+      <div class="seq-label">1. MemRouterVikingClient.search()</div>
+      <div class="seq-box">route_result = pipeline.route("What is the total cost...?")</div>
+    </div>
+    <div class="seq-row">
+      <div class="seq-label">2. 模板命中</div>
+      <div class="seq-box">matched_template_id = "openviking.aggregation_summary.v2"<br>skip_intent_analysis = false</div>
+    </div>
+    <div class="seq-row">
+      <div class="seq-label">3. Fallback</div>
+      <div class="seq-box">return await self._viking.search(query, ...)  <span class="highlight">← 走原有链路</span></div>
+    </div>
+    <div class="seq-row">
+      <div class="seq-label">4. OpenViking Server</div>
+      <div class="seq-box">POST /v1/search → Session.search() → IntentAnalyzer.analyze()<br>→ HierarchicalRetriever.search(params)  <span class="highlight">← 正常 VLM tokens</span></div>
+    </div>
+  </div>
+</div>
+
+<h2>七、向后兼容策略</h2>
+
+<div class="card">
+  <h3>7.1 兼容性矩阵</h3>
+  <table>
+    <tr>
+      <th>场景</th>
+      <th>MemRouter 版本</th>
+      <th>OpenViking 版本</th>
+      <th>行为</th>
+    </tr>
+    <tr>
+      <td>旧 Agent + 旧 OpenViking</td>
+      <td>未使用</td>
+      <td>无 execute_instruction</td>
+      <td>原生 VikingClient.search()，无变化</td>
+    </tr>
+    <tr>
+      <td>新 Agent + 旧 OpenViking</td>
+      <td>v1.4+</td>
+      <td>无 execute_instruction</td>
+      <td>MemRouterVikingClient 捕获 AttributeError，自动降级为 find()。IntentAnalyzer 仍运行。</td>
+    </tr>
+    <tr>
+      <td>新 Agent + 新 OpenViking</td>
+      <td>v1.4+</td>
+      <td>有 execute_instruction</td>
+      <td>Fast path 生效。skip_intent_analysis=true 时 0 VLM tokens。</td>
+    </tr>
+    <tr>
+      <td>旧 Agent + 新 OpenViking</td>
+      <td>未使用</td>
+      <td>有 execute_instruction</td>
+      <td>Agent 不调用 MemRouter，OpenViking 新接口不触发。无变化。</td>
+    </tr>
+  </table>
+
+  <h3>7.2 渐进式上线建议</h3>
+  <ol>
+    <li><strong>Phase 1 — 接口就绪：</strong> 在 OpenViking 侧部署 execute_instruction endpoint，但不对外暴露。仅用于内部测试。</li>
+    <li><strong>Phase 2 — 灰度验证：</strong> 让 MemRouterVikingClient 调用 execute_instruction，对比 fast path 和 normal path 的结果一致性。确认召回率、排序、格式无差异。</li>
+    <li><strong>Phase 3 — 全量启用：</strong> 确认无问题后，正式将 MemRouterVikingClient 作为 VikingClient 的默认包装层。</li>
+    <li><strong>Phase 4 — 模板扩覆盖：</strong> 随着模板覆盖更多 intent family，逐步扩大 skip_intent_analysis=true 的场景范围。</li>
+  </ol>
+</div>
+
+<h2>八、验证清单</h2>
+
+<div class="card">
+  <h3>8.1 OpenViking 侧单测</h3>
+  <pre>import pytest
+from openviking.core.instruction_executor import InstructionExecutor
+from openviking.models.query_instruction import OpenVikingExecuteInstructionRequest
+
+
+@pytest.mark.asyncio
+async def test_execute_instruction_find(mock_retriever):
+    """Test fast path for personal_fact_lookup."""
+    executor = InstructionExecutor(mock_retriever)
+    request = OpenVikingExecuteInstructionRequest(
+        query="What did Calvin buy in March 2023?",
+        search_mode="find",
+        skip_intent_analysis=True,
+        target_uri="viking://memories",
+        level=[2],
+        limit=10,
+        typed_query={
+            "query": "What did Calvin buy in March 2023?",
+            "context_type": "memory",
+            "intent": "personal_fact_lookup",
+            "priority": 1,
+        },
+    )
+
+    result = await executor.execute(request)
+
+    assert len(result.memories) &gt; 0
+    assert result.total &gt; 0
+    assert result._execution_meta["skip_intent_analysis"] is True
+    assert result._execution_meta["search_mode"] == "find"
+    # Verify IntentAnalyzer was NOT called
+    mock_retriever.find.assert_awaited_once()
+    mock_retriever.find.assert_called_with(
+        query="What did Calvin buy in March 2023?",
+        target_uri="viking://memories",
+        context_type="memory",
+        level=[2],
+        limit=10,
+        typed_query={...},
+    )
+
+
+@pytest.mark.asyncio
+async def test_execute_instruction_unsupported_mode(mock_retriever):
+    """Test that unsupported search_mode raises ValueError for fallback."""
+    executor = InstructionExecutor(mock_retriever)
+    request = OpenVikingExecuteInstructionRequest(
+        query="test",
+        search_mode="unsupported_mode",
+    )
+
+    with pytest.raises(ValueError, match="Unsupported search_mode"):
+        await executor.execute(request)
+</pre>
+
+  <h3>8.2 端到端集成测试</h3>
+  <pre>async def test_end_to_end_fast_path():
+    """Full integration: MemRouterVikingClient → OpenViking execute_instruction."""
+    viking = VikingClient(agent_id="test")
+    client = MemRouterVikingClient(viking_client=viking)
+    await client.initialize()
+
+    result = await client.search("What did Calvin buy in March 2023?")
+
+    # Fast path indicators
+    assert "_memrouter_meta" in result
+    assert result["_memrouter_meta"]["skip_intent_analysis"] is True
+    assert result["_memrouter_meta"]["route_method"] == "template_embedding"
+    assert result["_memrouter_meta"]["backend_id"] == "openviking_memory_backend"
+
+    # Result content sanity
+    assert "memories" in result
+    assert "total" in result
+</pre>
+</div>
+
+<h2>九、工作量评估</h2>
+
+<div class="card">
+  <table>
+    <tr>
+      <th>模块</th>
+      <th>预估工作量</th>
+      <th>复杂度</th>
+    </tr>
+    <tr>
+      <td>Pydantic 模型（query_instruction.py）</td>
+      <td>~30 行</td>
+      <td>低</td>
+    </tr>
+    <tr>
+      <td>InstructionExecutor（核心逻辑）</td>
+      <td>~150 行</td>
+      <td>中</td>
+    </tr>
+    <tr>
+      <td>HTTP endpoint（routes.py）</td>
+      <td>~30 行</td>
+      <td>低</td>
+    </tr>
+    <tr>
+      <td>AsyncHTTPClient.execute_instruction</td>
+      <td>~15 行</td>
+      <td>低</td>
+    </tr>
+    <tr>
+      <td>单元测试</td>
+      <td>~100 行</td>
+      <td>中</td>
+    </tr>
+    <tr>
+      <td><strong>总计</strong></td>
+      <td><strong>~325 行</strong></td>
+      <td><strong>中低</strong></td>
+    </tr>
+  </table>
+</div>
+
+<h2>十、总结</h2>
+
+<div class="card">
+  <p>MemRouter 侧已经准备就绪。OpenViking 侧只需完成<strong>三件事</strong>即可启用 fast path：</p>
+  <ol>
+    <li><strong>新增 <code>InstructionExecutor</code></strong>：解析 BackendQueryInstruction，直接调用 HierarchicalRetriever，跳过 IntentAnalyzer。</li>
+    <li><strong>新增 HTTP endpoint <code>POST /v1/execute_instruction</code></strong>：接收 instruction，返回检索结果。</li>
+    <li><strong>在 <code>AsyncHTTPClient</code> 中暴露 <code>execute_instruction()</code></strong>：让 MemRouterVikingClient 可以一行调用。</li>
+  </ol>
+
+  <p>整个修改是<strong>纯新增 + 薄封装</strong>，不改动现有 IntentAnalyzer、Session、Retriever 核心逻辑，具备完整的向后兼容性。即使 OpenViking 未升级，MemRouterVikingClient 也会自动降级到 <code>find()</code>，不会破坏现有功能。</p>
+</div>
+
+</main>
+
+<footer>
+  OpenViking 侧 MemRouter 对接实现方案 · EchoMem v1.4
+</footer>
+
+</body>
+</html>

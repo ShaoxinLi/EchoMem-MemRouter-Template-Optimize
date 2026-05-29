@@ -1,0 +1,303 @@
+schema_version: mem-router.backend-route-template.v1
+template_id: graph.entity_relation.v1
+version: '2.1'
+status: enabled
+target:
+  primary_backend_id: graph_memory_backend
+  secondary_backend_ids: []
+intent_family:
+  name: entity_relation_query
+  description: Queries asking how entities, people, organizations, events, or objects are connected.
+semantic_card: 'Use this template when the user asks about explicit relationships, connections, membership, collaboration,
+  co-participation, discussion links, or entity-to-event associations. Covers all structured relations including person-event,
+  person-entity, event-location, and entity-attribute links. The query usually contains at least two entities or asks for
+  connected entities around one anchor entity. '
+query_prototypes:
+- What is the relationship between two people?
+- How are two entities connected?
+- How is one person connected to another person?
+- What connection exists between these two entities?
+- Who is connected to this person?
+- Who is related to this entity?
+- Which people are associated with this person?
+- Which organization does this person belong to?
+- Which group is this entity part of?
+- Who worked with this person?
+- Who collaborated with this person?
+- Who attended the same event?
+- Which events did two people both attend?
+- What did one person discuss with another person?
+- What topic connected these two people?
+- What event connects this person and this cause?
+- Which event did this person participate in to support a cause?
+- Who supported the same cause?
+- Which entity is linked to this event?
+- Which person is linked to this activity?
+- What relationship does PERSON_A have with PERSON_B?
+- How is PERSON_A connected to PERSON_B?
+- What did PERSON_A discuss with PERSON_B?
+- Which organization does PERSON_A belong to?
+- What event connects PERSON_A and EVENT_X?
+- Which people attended EVENT_X together?
+- Which cause did PERSON_A support through EVENT_X?
+- Who has a work relationship with PERSON_A?
+- What shared activity connects PERSON_A and PERSON_B?
+- Which team is PERSON_A part of?
+- What event did John participate in to show support for veterans' rights?
+- What shared activities do Dave and Calvin have?
+- What did Dave discuss with the cool artist he met at the gala?
+- What relationship does Jon have with Gina?
+- Who are Jon's friends?
+- What organization does Gina belong to?
+- Who has worked with Jon?
+- Which field anchors cross-system sync?
+- What framing repeats across storage docs?
+- Which entity anchors this relationship?
+- Who invited someone to join an activity?
+- Who planned to invite someone to an event?
+- Who asked someone to participate in something?
+- Who wanted someone to join them?
+- Which person invited another person somewhere?
+- Who was invited to join a group or trip?
+- What social connection led to an invitation?
+- Who proposed an activity to someone else?
+- Which person reached out to another for an event?
+- Who suggested someone join an activity?
+- What relationship led to an invitation?
+- Who intended to include someone in a plan?
+- Which person initiated contact for a shared activity?
+- Who invited Nate to join her on the trails?
+- What social link explains the invitation?
+- Which connection prompted the invitation?
+- Who planned to include someone in a gaming party?
+- What person-to-person link caused the invite?
+- Which friendship led to the activity invitation?
+- Who wanted to bring someone along to an event?
+- What relationship explains the joint activity plan?
+- What schools did John play basketball in?
+- What teams was Michael part of during college?
+- What organizations has Emily volunteered for?
+- What do John and his father do together?
+- What hobbies do Lisa and Tom both enjoy?
+- What are the two hobbies that led me to join online communities?
+- What are the two reasons I decided to move to this city?
+- Which profile favors long-term diversity?
+- Which objects are considered core?
+- What does import/export support?
+- Which diff reveals drift?
+- What's first debugging step?
+- Which API path starts all calls?
+- What can tasks link to?
+- Where can activities attach?
+- What do PERSON_A and PERSON_B have in common?
+- How do PERSON_A and PERSON_B both like to destress?
+- What type of volunteering have PERSON_A and PERSON_B both done?
+- Which places or events have PERSON_A and PERSON_B planned to meet at?
+- Which country do PERSON_A and PERSON_B want to meet in?
+- Do both PERSON_A and PERSON_B have pets?
+- What kind of interests do PERSON_A and PERSON_B share?
+- Who did PERSON_A have dinner with on DATE_X?
+- What martial arts has PERSON_A done?
+- What did PERSON_A share with PERSON_B?
+- What food did PERSON_A share a photo of with PERSON_B?
+- What did PERSON_A and PERSON_B discover they both enjoy?
+- What is the topic of discussion between PERSON_A and PERSON_B?
+- What did PERSON_A offer to share with PERSON_B?
+- What did PERSON_A share to show ways to ACTIVITY?
+- What kind of painting did PERSON_A share with PERSON_B?
+- What did James and Samantha discover they both enjoy at PLACE?
+- What did PERSON_A and PERSON_B have in common?
+hard_negatives:
+- query: When did Jon visit networking events for his store?
+  confusing_with_backend: temporal_memory_backend
+  reason: Single temporal fact, not relation traversal.
+- query: Which task happened first?
+  confusing_with_backend: temporal_memory_backend
+  reason: Sequence reasoning, not entity relation.
+- query: How many days passed between two events?
+  confusing_with_backend: temporal_memory_backend
+  reason: Duration comparison, not entity relation.
+- query: What is PERSON_A's favorite communication style?
+  confusing_with_backend: openviking_memory_backend
+  reason: User preference memory, not relation query.
+- query: Where did PERSON_A travel in DATE?
+  confusing_with_backend: openviking_memory_backend
+  reason: Personal location fact, not relation query.
+- query: Can you recommend activities based on my preferences?
+  confusing_with_backend: openviking_memory_backend
+  reason: Preference-driven recall, not graph relation.
+- query: What happened first, EVENT_A or EVENT_B?
+  confusing_with_backend: temporal_memory_backend
+  reason: Temporal order question, not relation traversal.
+- query: How long did two people date before moving in together?
+  confusing_with_backend: temporal_memory_backend
+  reason: Duration question, not entity relationship lookup.
+- query: Where can activities attach?
+  confusing_with_backend: openviking_memory_backend
+  reason: System architecture question, not social entity relation.
+- query: What can tasks link to?
+  confusing_with_backend: openviking_memory_backend
+  reason: System schema question, not social entity relation.
+- query: Who became a parent first?
+  confusing_with_backend: temporal_memory_backend
+  reason: First-event temporal comparison, not relation traversal.
+- query: When did PERSON_A paint a sunrise?
+  confusing_with_backend: temporal_memory_backend
+  reason: Timestamp lookup for creative activity, not entity relation.
+- query: When did PERSON_A donate ITEM_X?
+  confusing_with_backend: temporal_memory_backend
+  reason: Timestamp lookup for action, not relation traversal.
+- query: When did PERSON_A join GROUP_X?
+  confusing_with_backend: temporal_memory_backend
+  reason: Timestamp lookup for membership action, not relation structure.
+- query: When did PERSON_A first watch MOVIE_X?
+  confusing_with_backend: temporal_memory_backend
+  reason: Timestamp lookup for first occurrence, not relation query.
+- query: When did PERSON_A win their first COMPETITION_X?
+  confusing_with_backend: temporal_memory_backend
+  reason: Timestamp lookup for achievement, not entity relation.
+- query: When did PERSON_A make FOOD_X for themselves?
+  confusing_with_backend: temporal_memory_backend
+  reason: Timestamp lookup for activity, not relation traversal.
+- query: When did PERSON_A travel to PLACE_X for the first time?
+  confusing_with_backend: temporal_memory_backend
+  reason: Timestamp lookup for travel, not relation query.
+- query: When did PERSON_A see BAND_X perform live?
+  confusing_with_backend: temporal_memory_backend
+  reason: Timestamp lookup for event attendance, not entity relation.
+- query: When did PERSON_A's RELATIVE pass away?
+  confusing_with_backend: temporal_memory_backend
+  reason: Timestamp lookup for life event, not relation traversal.
+- query: When did PERSON_A gift ITEM_X to PERSON_B?
+  confusing_with_backend: temporal_memory_backend
+  reason: Timestamp lookup for gift action, not relation structure.
+- query: When did PERSON_A's mother pass away?
+  confusing_with_backend: temporal_memory_backend
+  reason: Timestamp lookup for life event, not relation query.
+- query: When did PERSON_A's mom gift ITEM_X to PERSON_B?
+  confusing_with_backend: temporal_memory_backend
+  reason: Timestamp lookup for gift event, not relation traversal.
+- query: Which year did PERSON_A adopt PET_X?
+  confusing_with_backend: temporal_memory_backend
+  reason: Year lookup for adoption event, not entity relation.
+- query: When did PERSON_A start their new JOB_X?
+  confusing_with_backend: temporal_memory_backend
+  reason: Timestamp lookup for job start, not relation structure.
+- query: When did PERSON_A make FOOD_X for themselves?
+  confusing_with_backend: temporal_memory_backend
+  reason: Timestamp lookup for activity, not relation traversal.
+- query: What kind of project was PERSON_A working on in TIME_PERIOD?
+  confusing_with_backend: openviking_memory_backend
+  reason: Project-type fact with time context, not relation query.
+- query: Which recreational activity was PERSON_A pursuing on DATE_X?
+  confusing_with_backend: temporal_memory_backend
+  reason: Activity fact anchored to date, not relation traversal.
+- query: When did PERSON_A first travel to PLACE_X?
+  confusing_with_backend: temporal_memory_backend
+  reason: First-occurrence timestamp lookup, not relation query.
+- query: When did PERSON_A resume ACTIVITY_X in their adulthood?
+  confusing_with_backend: temporal_memory_backend
+  reason: Timestamp lookup for resumed activity, not relation traversal.
+- query: When did PERSON_A lose their JOB_X?
+  confusing_with_backend: temporal_memory_backend
+  reason: Timestamp lookup for job loss event, not relation query.
+- query: What items did PERSON_A buy in MONTH_YEAR?
+  confusing_with_backend: openviking_memory_backend
+  reason: Single-person purchase fact, not graph relation traversal.
+- query: Which bands has PERSON_A enjoyed listening to?
+  confusing_with_backend: openviking_memory_backend
+  reason: Single-person interest list, not relation traversal.
+- query: What are PERSON_A's career goals?
+  confusing_with_backend: openviking_memory_backend
+  reason: Personal profile fact, not relation traversal.
+- query: What did Nate share a photo of when mentioning unwinding at home?
+  confusing_with_backend: openviking_memory_backend
+  reason: Single-person photo content, not social relation.
+- query: Where was the forest picture shared by John on December 1, 2023 taken?
+  confusing_with_backend: openviking_memory_backend
+  reason: Photo location fact, not relation between people.
+- query: What did Audrey share to show ways to keep dogs active in the city?
+  confusing_with_backend: openviking_memory_backend
+  reason: Single-person content share, not social relation.
+- query: What book is Jon currently reading?
+  confusing_with_backend: openviking_memory_backend
+  reason: Single-person current activity, not relation.
+- query: According to Gina, what makes Jon a perfect mentor and guide?
+  confusing_with_backend: openviking_memory_backend
+  reason: Single-person attribute assessment, not relation structure.
+- query: What food did Sam share a photo of on 19 August, 2023?
+  confusing_with_backend: openviking_memory_backend
+  reason: Food/item identification, not relation between people.
+- query: How will John share the honey garlic chicken recipe with the other person?
+  confusing_with_backend: openviking_memory_backend
+  reason: Method/way question, not relation structure.
+- query: What did Evan share with Sam after their hiking trip?
+  confusing_with_backend: openviking_memory_backend
+  reason: Item being shared, not the relation itself.
+- query: What did Evan offer to share with Sam after talking about healthy snacks?
+  confusing_with_backend: openviking_memory_backend
+  reason: Offer content, not social relation.
+- query: Which hobby did PERSON_A take up in MONTH_YEAR?
+  confusing_with_backend: openviking_memory_backend
+  reason: Single-person hobby fact, not graph relation traversal.
+- query: Which of PERSON_A's family and friends have passed away?
+  confusing_with_backend: openviking_memory_backend
+  reason: Personal life fact list, not timestamp or graph traversal.
+- query: What did PERSON_A do last weekend?
+  confusing_with_backend: openviking_memory_backend
+  reason: Single-person activity fact, not a relation between two entities.
+- query: Where did PERSON_A grow up?
+  confusing_with_backend: openviking_memory_backend
+  reason: Single-person location fact, no second entity involved.
+- query: What is PERSON_A's favorite food?
+  confusing_with_backend: openviking_memory_backend
+  reason: Single-person preference, not a social or structural relation.
+- query: What did PERSON_A buy at the store?
+  confusing_with_backend: openviking_memory_backend
+  reason: Single-person purchase fact, no relational connection.
+- query: What book is PERSON_A currently reading?
+  confusing_with_backend: openviking_memory_backend
+  reason: Single-person current activity, not an entity relation.
+- query: How did PERSON_A feel about the trip?
+  confusing_with_backend: openviking_memory_backend
+  reason: Subjective experience, not a structured relation.
+- query: What car does PERSON_A drive?
+  confusing_with_backend: openviking_memory_backend
+  reason: Single-person attribute fact, not entity-to-entity relation.
+- query: Where did PERSON_A travel last month?
+  confusing_with_backend: openviking_memory_backend
+  reason: Single-person travel fact, not a co-participation relation.
+- query: What hobbies does PERSON_A have?
+  confusing_with_backend: openviking_memory_backend
+  reason: Single-person hobby list, not a shared activity relation.
+- query: What health issues does PERSON_A have?
+  confusing_with_backend: openviking_memory_backend
+  reason: Single-person health fact, not a relation query.
+- query: What did PERSON_A accomplish last year?
+  confusing_with_backend: openviking_memory_backend
+  reason: Single-person achievement, not a relation between entities.
+- query: What did PERSON_A do on their birthday?
+  confusing_with_backend: openviking_memory_backend
+  reason: Single-person event description, not a social connection.
+- query: When did PERSON_A visit PLACE_X?
+  confusing_with_backend: temporal_memory_backend
+  reason: Temporal anchor is the core ask, not the relation structure.
+- query: How long has PERSON_A lived in PLACE_X?
+  confusing_with_backend: temporal_memory_backend
+  reason: Duration query, not entity relation traversal.
+- query: What did PERSON_A eat for breakfast?
+  confusing_with_backend: openviking_memory_backend
+  reason: Mundane single-person fact, not a relation query.
+- query: Where was PERSON_A born?
+  confusing_with_backend: openviking_memory_backend
+  reason: Single-person biographical fact, not a social relation.
+thresholds:
+  accept: 0.50
+  fallback: 0.42
+  margin: 0.04
+  hard_negative_margin: 0.03
+  hard_negative_penalty: 0.08
+calibration:
+  min_positive_examples: 40
+  min_hard_negatives: 16
+  expected_fallback_rate: 0.3

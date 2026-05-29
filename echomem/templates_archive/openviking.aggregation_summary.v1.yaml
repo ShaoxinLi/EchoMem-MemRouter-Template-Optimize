@@ -1,0 +1,43 @@
+schema_version: "mem-router.backend-route-template.v1"
+template_id: "openviking.aggregation_summary.v1"
+version: "1.0"
+status: "disabled"
+
+target:
+  primary_backend_id: "openviking_memory_backend"
+  secondary_backend_ids: []
+
+intent_family:
+  name: "aggregation_summary"
+  description: "用户要求聚合、汇总、计算或对比多个记忆片段，通常涉及 total/sum/compare/all。"
+
+semantic_card: >
+  适合需要跨片段聚合的查询：总花费、对比偏好、汇总事件列表、
+  计算数量等。问题常以 total/how much/compare/suggest 开头。
+
+query_prototypes:
+  - "What is the total cost of my recently purchased headphones and the iPad?"
+  - "Would Dave prefer working on a Dodge Charger or a Subaru Forester?"
+  - "Can you suggest some activities that I can do in the evening?"
+  - "What are all the causes John has done events for?"
+  - "How much did I spend on a designer handbag?"
+
+hard_negatives:
+  - query: "When did Jon visit networking events for his store?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Single temporal fact, not aggregation"
+  - query: "Jon 和 Gina 是什么关系？"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Relation query, not aggregation"
+
+thresholds:
+  accept: 0.76
+  fallback: 0.64
+  margin: 0.04
+  hard_negative_margin: 0.03
+  hard_negative_penalty: 0.06
+
+calibration:
+  min_positive_examples: 15
+  min_hard_negatives: 10
+  expected_fallback_rate: 0.15

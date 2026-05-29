@@ -1,0 +1,185 @@
+diff --git a/openviking/server/routers/search.py b/openviking/server/routers/search.py
+index 0666ee9c..77dd435c 100644
+--- a/openviking/server/routers/search.py
++++ b/openviking/server/routers/search.py
+@@ -121,6 +121,22 @@ class GlobRequest(BaseModel):
+     node_limit: Optional[int] = None
+ 
+ 
++class ExecuteInstructionRequest(BaseModel):
++    """Request model for execute_instruction (MemRouter fast path)."""
++
++    query: str
++    search_mode: str = Field(default="find", pattern=r"^(find|search)$")
++    skip_intent_analysis: bool = True
++    target_uri: Optional[Union[str, List[str]]] = None
++    context_type: Optional[str] = "memory"
++    level: Optional[Union[int, str, List[int]]] = None
++    limit: int = Field(default=10, ge=1, le=100)
++    score_threshold: Optional[float] = None
++    typed_query: Optional[Dict[str, Any]] = None
++    filter: Optional[Dict[str, Any]] = None
++    telemetry: TelemetryRequest = False
++
++
+ @router.post("/find")
+ async def find(
+     request: FindRequest,
+@@ -271,3 +287,48 @@ async def glob(
+             raise mapped from exc
+         raise
+     return Response(status="ok", result=result)
++
++
++@router.post("/execute_instruction")
++async def execute_instruction(
++    request: ExecuteInstructionRequest,
++    _ctx: RequestContext = Depends(get_request_context),
++):
++    """Execute a pre-computed memory query instruction (MemRouter fast path).
++
++    This endpoint bypasses IntentAnalyzer entirely. The caller (MemRouter)
++    is responsible for having already determined target_uri, search_mode,
++    and context_type.
++    """
++    service = get_service()
++    actual_limit = _resolve_search_limit(request.limit, request.node_limit)
++    effective_filter = _resolve_search_filter(
++        request.filter,
++        request.since,
++        request.until,
++        request.time_field,
++    )
++    resolved_target_uri = _resolve_uri_or_uris(request.target_uri or "")
++    execution = await run_operation(
++        operation="search.execute_instruction",
++        telemetry=request.telemetry,
++        fn=lambda: service.search.execute_instruction(
++            query=request.query,
++            ctx=_ctx,
++            target_uri=resolved_target_uri,
++            search_mode=request.search_mode,
++            limit=actual_limit,
++            score_threshold=request.score_threshold,
++            filter=effective_filter,
++            level=_resolve_levels(request.level) or None,
++        ),
++    )
++    result = execution.result
++    if hasattr(result, "to_dict"):
++        result = result.to_dict(include_provenance=False)
++    result = _sanitize_floats(result)
++    return Response(
++        status="ok",
++        result=result,
++        telemetry=execution.telemetry,
++    ).model_dump(exclude_none=True)
+diff --git a/openviking/service/search_service.py b/openviking/service/search_service.py
+index f57debb0..caa4769c 100644
+--- a/openviking/service/search_service.py
++++ b/openviking/service/search_service.py
+@@ -122,3 +122,59 @@ class SearchService:
+             level=level,
+         )
+         return result
++
++    async def execute_instruction(
++        self,
++        query: str,
++        ctx: RequestContext,
++        target_uri: Union[str, List[str]] = "",
++        search_mode: str = "find",
++        limit: int = 10,
++        score_threshold: Optional[float] = None,
++        filter: Optional[Dict] = None,
++        level: Optional[List[int]] = None,
++    ) -> Any:
++        """Execute a pre-computed instruction without IntentAnalyzer (MemRouter fast path).
++
++        This method bypasses IntentAnalyzer entirely. The caller (MemRouter)
++        is responsible for having already determined target_uri, search_mode,
++        and context_type.
++
++        Args:
++            query: Raw user query.
++            ctx: Request context (for ACL / telemetry).
++            target_uri: Target directory URI(s).
++            search_mode: "find" or "search".
++            limit: Max results.
++            score_threshold: Score threshold.
++            filter: Metadata filters.
++            level: Filter by level (0=abstract, 1=overview, 2=file).
++
++        Returns:
++            FindResult — same shape as search() / find().
++        """
++        _ensure_non_empty_query(query)
++        target_uri = validate_optional_viking_uris(target_uri, field_name="target_uri")
++        viking_fs = self._ensure_initialized()
++
++        if search_mode == "find":
++            result = await viking_fs.find(
++                query=query,
++                ctx=ctx,
++                target_uri=target_uri,
++                limit=limit,
++                score_threshold=score_threshold,
++                filter=filter,
++                level=level,
++            )
++        else:
++            result = await viking_fs.search(
++                query=query,
++                ctx=ctx,
++                target_uri=target_uri,
++                limit=limit,
++                score_threshold=score_threshold,
++                filter=filter,
++                level=level,
++            )
++        return result
+diff --git a/openviking_cli/client/http.py b/openviking_cli/client/http.py
+index 0a9446e5..1ce3add1 100644
+--- a/openviking_cli/client/http.py
++++ b/openviking_cli/client/http.py
+@@ -694,6 +694,40 @@ class AsyncHTTPClient(BaseClient):
+         response_data = self._handle_response_data(response)
+         return FindResult.from_dict(response_data.get("result") or {})
+ 
++    async def execute_instruction(
++        self,
++        instruction: Dict[str, Any],
++    ) -> FindResult:
++        """Execute a pre-computed BackendQueryInstruction (MemRouter fast path).
++
++        Args:
++            instruction: Dictionary conforming to ExecuteInstructionRequest.
++                Expected keys:
++                    - query: str
++                    - search_mode: str ("find" | "search")
++                    - skip_intent_analysis: bool
++                    - target_uri: Optional[str | List[str]]
++                    - context_type: Optional[str]
++                    - level: Optional[List[int]]
++                    - limit: int
++                    - score_threshold: Optional[float]
++                    - typed_query: Optional[dict]
++                    - filter: Optional[dict]
++
++        Returns:
++            FindResult with memories, resources, skills.
++
++        Raises:
++            httpx.HTTPStatusError: If server returns 4xx/5xx.
++            OpenVikingError: If response contains error status.
++        """
++        response = await self._http.post(
++            "/api/v1/search/execute_instruction",
++            json=instruction,
++        )
++        response_data = self._handle_response_data(response)
++        return FindResult.from_dict(response_data.get("result") or {})
++
+     async def grep(
+         self,
+         uri: str,

@@ -1,0 +1,24 @@
+# MemRouter evaluation local config
+# 使用方法：
+#   1. 复制本文件为 memrouter_eval.local.yaml
+#   2. 填入真实的 API Key
+#   3. 或将 ${ENV_VAR} 语法替换为环境变量引用
+
+embedding:
+  provider: openai
+  model: text-embedding-v3
+  model_short: text-embedding-v3-1024
+  api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
+  api_key: YOUR_DASHSCOPE_API_KEY
+  dimension: 1024
+  max_concurrent: 10
+
+llm:
+  provider: anthropic_compatible
+  model: MiniMax-M2.7
+  provider_short: minimax
+  base_url: https://api.minimaxi.com/anthropic
+  auth_token: YOUR_MINIMAX_API_KEY
+  timeout_ms: 120000
+  max_tokens: 1024
+  temperature: 0.0

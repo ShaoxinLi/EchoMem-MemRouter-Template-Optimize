@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MemRouter 上下文感知能力分析</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --fg: #c9d1d9;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --accent2: #3fb950;
+    --accent3: #f85149;
+    --accent4: #d2a8ff;
+    --accent5: #ffa657;
+    --border: #30363d;
+    --card: #161b22;
+    --code: #1f2937;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
+    line-height: 1.7;
+  }
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 2rem 1.5rem 1.5rem;
+    text-align: center;
+  }
+  h1 { margin: 0 0 .5rem; font-size: 1.8rem; color: #f0f6fc; }
+  .subtitle { color: var(--muted); font-size: .95rem; }
+  main { max-width: 980px; margin: 0 auto; padding: 1.5rem; }
+  h2 { color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: .4rem; margin-top: 2rem; font-size: 1.3rem; }
+  h3 { color: var(--accent4); margin-top: 1.6rem; font-size: 1.05rem; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.2rem;
+    margin: 1rem 0;
+  }
+  .tag {
+    display: inline-block;
+    padding: .15rem .5rem;
+    border-radius: 999px;
+    font-size: .78rem;
+    font-weight: 600;
+    margin-right: .35rem;
+    margin-bottom: .35rem;
+    background: #21262d;
+    color: var(--accent);
+    border: 1px solid var(--border);
+  }
+  .tag.green { color: var(--accent2); }
+  .tag.red { color: var(--accent3); }
+  .tag.purple { color: var(--accent4); }
+  .tag.orange { color: var(--accent5); }
+  code, pre {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: .88rem;
+  }
+  code {
+    background: var(--code);
+    padding: .15rem .35rem;
+    border-radius: 4px;
+    color: #e6edf3;
+  }
+  pre {
+    background: var(--code);
+    padding: 1rem;
+    border-radius: 8px;
+    overflow-x: auto;
+    border: 1px solid var(--border);
+  }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .92rem; }
+  th, td { border: 1px solid var(--border); padding: .6rem .8rem; text-align: left; }
+  th { background: #1c2128; color: var(--accent); font-weight: 600; }
+  tr:nth-child(even) { background: #11161d; }
+  ul { padding-left: 1.3rem; }
+  li { margin: .35rem 0; }
+  .warn { color: var(--accent3); }
+  .tip { color: var(--accent4); }
+  .highlight { color: var(--accent2); font-weight: 600; }
+  footer { text-align: center; padding: 2rem 1rem; color: var(--muted); font-size: .85rem; border-top: 1px solid var(--border); margin-top: 2rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>MemRouter 上下文感知能力分析</h1>
+  <div class="subtitle">记忆模板匹配未考虑 Agent 历史上下文对精度的影响评估</div>
+</header>
+
+<main>
+
+<section class="card">
+  <h2>核心问题</h2>
+  <p>MemRouter 的记忆模板匹配方案<strong>没有考虑 Agent 上下文中的历史信息和对话内容</strong>，而 OpenViking 记忆召回的意图识别输入包含了 session 压缩摘要 + 最近 5 条消息。这个差异是否会影响路由精度？</p>
+</section>
+
+<h2>一、两者的上下文差异</h2>
+<div class="card">
+  <table>
+    <tr>
+      <th>维度</th>
+      <th>MemRouter 模板匹配</th>
+      <th>OpenViking IntentAnalyzer</th>
+    </tr>
+    <tr>
+      <td><strong>输入</strong></td>
+      <td>当前 query + 弱正则 hints</td>
+      <td>session 压缩摘要 + 最近 5 条消息 + 当前 query</td>
+    </tr>
+    <tr>
+      <td><strong>决策粒度</strong></td>
+      <td>后端级别（选哪个记忆库）</td>
+      <td>内部检索策略（选哪种 context_type + target_uri）</td>
+    </tr>
+    <tr>
+      <td><strong>上下文敏感度</strong></td>
+      <td><span class="tag red">无</span></td>
+      <td><span class="tag green">高</span></td>
+    </tr>
+  </table>
+</div>
+
+<h2>二、会影响精度的典型场景</h2>
+
+<div class="card">
+  <h3>场景 1：指代消解型 Query（影响最大）</h3>
+  <pre>Round 1: "我的生日是 1990 年 5 月 20 日"
+        → MemRouter 路由到 OpenViking ✓
+
+Round 2: "你还记得吗？"
+        → MemRouter 匹配"回忆"模板 → OpenViking ✓
+          但无法知道是"生日"这个事实
+
+Round 3: "那是什么星座？"
+        → MemRouter 只看到"星座"
+          → 可能误路由到 Graph（实体知识）
+          → 而非 OpenViking（个人记忆）</pre>
+  <p><span class="tip">OpenViking 有上下文</span>：看到 Round 1 提到生日 → 知道问的是"我的生日星座" → 正确检索个人记忆。</p>
+</div>
+
+<div class="card">
+  <h3>场景 2：省略主语的 Query</h3>
+  <pre>User: "把它改成红色"
+
+MemRouter：看到"改成"（操作动词）
+          → 可能路由到 skill 执行层
+
+OpenViking（有上下文）：看到上文讨论的是"用户头像"
+                      → 知道是修改头像颜色
+                      → 路由到 memory 查询用户偏好</pre>
+</div>
+
+<div class="card">
+  <h3>场景 3：意图漂移场景（影响较小）</h3>
+  <pre>Round 1: "北京到上海的高铁经过哪些城市？"
+        → Graph（地理关系）
+
+Round 2: "那到上海要多长时间？"
+        → MemRouter 看到"多长时间" → Temporal ✓
+          但如果有上下文，可能更确定是接续 Round 1 的 travel query</pre>
+</div>
+
+<h2>三、MemRouter 的缓解机制</h2>
+<div class="card">
+  <p>MemRouter 虽然不考虑上下文，但有以下设计来缓解精度损失：</p>
+
+  <h3>1. 默认兜底为 OpenViking</h3>
+  <p><code>DEFAULT_BACKEND_ID = "openviking_memory_backend"</code></p>
+  <p>模糊 query 大概率路由到个人记忆后端，这对 Agent 场景通常是合理的。</p>
+
+  <h3>2. 路由粒度粗（只选后端，不选内部策略）</h3>
+  <p>即使不知道具体"记住什么"，只要知道是 memory 类 query 就够了。具体检索什么由 OpenViking 内部的 IntentAnalyzer 在有了上下文后决定。</p>
+
+  <h3>3. 多 backend 输出（Branch 2）</h3>
+  <p>当 top1/top2 间隔不足时，同时输出两个后端（primary + secondary），让下游合并检索结果。</p>
+</div>
+
+<h2>四、结论</h2>
+<div class="card">
+  <table>
+    <tr>
+      <th>场景</th>
+      <th>MemRouter 精度影响</th>
+      <th>严重程度</th>
+    </tr>
+    <tr>
+      <td>当前 query 自包含完整语义</td>
+      <td><span class="highlight">无影响</span></td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>需要指代消解（"它"、"那个"）</td>
+      <td>可能路由正确后端但参数不足</td>
+      <td><span class="tag orange">中等</span></td>
+    </tr>
+    <tr>
+      <td>意图高度依赖上文（"还有呢？"）</td>
+      <td>可能误判后端</td>
+      <td><span class="tag red">较高</span></td>
+    </tr>
+    <tr>
+      <td>常见个人记忆/事实查询</td>
+      <td><span class="highlight">无影响</span>，模板覆盖度高</td>
+      <td>-</td>
+    </tr>
+  </table>
+
+  <h3>核心权衡</h3>
+  <p>MemRouter <strong>牺牲了一部分上下文敏感精度</strong>，换取了：</p>
+  <ul>
+    <li><span class="highlight">零 LLM token 成本</span>（本地 embedding 匹配）</li>
+    <li><span class="highlight">毫秒级延迟</span></li>
+  </ul>
+  <p>对于"选后端"这个<strong>粗粒度任务</strong>，当前 query 通常已包含足够信息；真正的上下文理解（指代消解、意图细化）留给了 OpenViking 的 IntentAnalyzer 在<strong>后端内部处理</strong>。</p>
+
+  <h3>潜在优化方向</h3>
+  <p>如果要提升 MemRouter 的上下文感知能力，可以在 <code>MemoryRouteRequest</code> 中增加 <code>session_context</code> 字段，让 <code>QueryFeatureBuilder</code> 在特征提取时考虑历史消息。但这会打破"轻量级"的设计原则，需要权衡。</p>
+</div>
+
+</main>
+
+<footer>
+  Generated from EchoMem MemRouter analysis · May 2026
+</footer>
+</body>
+</html>

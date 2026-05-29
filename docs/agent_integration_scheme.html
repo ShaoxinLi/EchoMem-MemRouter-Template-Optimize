@@ -1,0 +1,1308 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MemRouter + OpenViking Agent 集成方案</title>
+<style>
+  :root {
+    --bg: #0d1117; --fg: #c9d1d9; --muted: #8b949e;
+    --accent: #58a6ff; --accent2: #3fb950; --accent3: #f85149;
+    --accent4: #d2a8ff; --accent5: #ffa657; --border: #30363d;
+    --card: #161b22; --code: #1f2937;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:0; background:var(--bg); color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans SC",sans-serif;
+    line-height:1.7; }
+  header { border-bottom:1px solid var(--border); padding:2rem 1.5rem 1.5rem; text-align:center; }
+  h1 { margin:0 0 .5rem; font-size:1.8rem; color:#f0f6fc; }
+  .subtitle { color:var(--muted); font-size:.95rem; }
+  main { max-width:1100px; margin:0 auto; padding:1.5rem; }
+  h2 { color:var(--accent); border-bottom:1px solid var(--border); padding-bottom:.4rem; margin-top:2rem; font-size:1.3rem; }
+  h3 { color:var(--accent4); margin-top:1.6rem; font-size:1.05rem; }
+  h4 { color:var(--accent5); margin-top:1.2rem; font-size:1rem; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:1.2rem; margin:1rem 0; }
+  .tag { display:inline-block; padding:.15rem .5rem; border-radius:999px; font-size:.78rem; font-weight:600;
+    margin-right:.35rem; margin-bottom:.35rem; background:#21262d; color:var(--accent); border:1px solid var(--border); }
+  .tag.green { color:var(--accent2); } .tag.red { color:var(--accent3); }
+  .tag.purple { color:var(--accent4); } .tag.orange { color:var(--accent5); }
+  code, pre { font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; font-size:.88rem; }
+  code { background:var(--code); padding:.15rem .35rem; border-radius:4px; color:#e6edf3; }
+  pre { background:var(--code); padding:1rem; border-radius:8px; overflow-x:auto; border:1px solid var(--border); }
+  .flow { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; margin:1rem 0; }
+  .flow .node { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:.6rem .9rem; font-size:.9rem; }
+  .flow .arrow { color:var(--muted); font-size:1.2rem; }
+  table { width:100%; border-collapse:collapse; margin:1rem 0; font-size:.92rem; }
+  th, td { border:1px solid var(--border); padding:.6rem .8rem; text-align:left; }
+  th { background:#1c2128; color:var(--accent); font-weight:600; }
+  tr:nth-child(even) { background:#11161d; }
+  ul { padding-left:1.3rem; } li { margin:.35rem 0; }
+  .formula { background:#11161d; border-left:3px solid var(--accent); padding:.8rem 1rem; margin:.8rem 0;
+    border-radius:0 6px 6px 0; font-family:monospace; color:#e6edf3; }
+  .warn { color:var(--accent3); } .tip { color:var(--accent4); } .highlight { color:var(--accent2); font-weight:600; }
+  .badge { display:inline-block; padding:.1rem .4rem; border-radius:4px; font-size:.75rem; font-weight:600; }
+  .badge.rec { background:rgba(59,185,80,.15); color:var(--accent2); }
+  .badge.new { background:rgba(88,166,255,.15); color:var(--accent); }
+  .seq { display:flex; flex-direction:column; gap:.3rem; margin:1rem 0; }
+  .seq-row { display:flex; align-items:center; gap:.8rem; }
+  .seq-label { min-width:180px; text-align:right; color:var(--muted); font-size:.85rem; }
+  .seq-box { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:.5rem .8rem; font-size:.9rem; flex:1; }
+  footer { text-align:center; padding:2rem 1rem; color:var(--muted); font-size:.85rem; border-top:1px solid var(--border); margin-top:2rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>MemRouter + OpenViking Agent 集成方案</h1>
+  <div class="subtitle">Agent（higo / openclaw / 其他）如何调用 MemRouter 进行记忆检索</div>
+</header>
+
+<main>
+
+<section class="card">
+  <h2>一、核心问题</h2>
+  <p>MemRouter 和 OpenViking 已经对接完成，现在需要回答：<strong>Agent 怎么用起来？</strong></p>
+  <p>Agent 需要解决四个问题：</p>
+  <ol>
+    <li><strong>何时触发</strong>记忆检索？（每个用户消息都检？还是只检记忆相关 query？）</li>
+    <li><strong>如何调用</strong>MemRouter？（直接调 pipeline？还是封装 SDK？）</li>
+    <li><strong>如何消费</strong>检索结果？（注入 system prompt？作为 tool result？）</li>
+    <li><strong>session 上下文</strong>怎么传递？（什么时候给 OpenViking 传 session，什么时候不传？）</li>
+  </ol>
+</section>
+
+<h2>二、Agent 记忆检索架构</h2>
+
+<div class="card">
+  <h3>2.1 总体流程</h3>
+  <pre style="background:transparent;border:none;padding:0;">
++---------------+      +-------------------+      +-------------------+      +---------------+
+|   User        |      |   Agent           |      |   MemRouter       |      |   OpenViking  |
+|               |      |   (higo/openclaw) |      |   (EchoMem)       |      |   (VikingFS)  |
++---------------+      +-------------------+      +-------------------+      +---------------+
+      |                        |                         |                         |
+      |  "我喜欢蓝色"           |                         |                         |
+      |----------------------->|                         |                         |
+      |                        |  ① 判断是否需要记忆检索   |                         |
+      |                        |     (MemoryTriggerGate)  |                         |
+      |                        |                         |                         |
+      |                        |  ② 调用 MemRouter.route()|                         |
+      |                        |------------------------>|                         |
+      |                        |                         |  ③ 模板匹配 + 决策        |
+      |                        |                         |     生成 query_instructions|
+      |                        |<------------------------|                         |
+      |                        |                         |                         |
+      |                        |  ④ 根据 skip_intent_analysis 选择调用路径            |
+      |                        |     ├─ true  → execute_instruction()  [零VLM]      |
+      |                        |     └─ false → search(session_info=...) [VLM]       |
+      |                        |---------------------------------------------------->|
+      |                        |                         |                         |
+      |                        |<----------------------------------------------------|
+      |                        |     ⑤ 返回 FindResult (memories/resources/skills)   |
+      |                        |                         |                         |
+      |                        |  ⑥ 结果注入 Agent Context                           |
+      |                        |     (system_prompt / memory_context / tool_result)   |
+      |                        |                         |                         |
+      |                        |  ⑦ LLM 生成回复（带记忆上下文）                      |
+      |                        |                         |                         |
+      |  "我记得你喜欢蓝色"      |                         |                         |
+      |<-----------------------|                         |                         |
+      |                        |                         |                         |
+  </pre>
+
+  <h3>2.2 关键设计原则</h3>
+  <table>
+    <tr><th>原则</th><th>说明</th></tr>
+    <tr><td><strong>对 Agent 透明</strong></td><td>Agent 不需要知道 MemRouter 内部有几种后端，只需要调用统一的 <code>retrieve_memory()</code> 接口</td></tr>
+    <tr><td><strong>检索与生成解耦</strong></td><td>记忆检索在 LLM 生成之前完成，检索结果作为上下文注入，不改变 LLM 的生成逻辑</td></tr>
+    <tr><td><strong>session 上下文自动管理</strong></td><td>Agent 的 conversation history 自动压缩为 session_summary，由 SDK 决定是否传递给后端</td></tr>
+    <tr><td><strong>可观测</strong></td><td>每次记忆检索的路由决策、查询指令、检索结果都记录到 trace，方便调试</td></tr>
+  </table>
+</div>
+
+<h2>三、Agent SDK 封装层</h2>
+
+<div class="card">
+  <h3>3.1 为什么需要 SDK 封装？</h3>
+  <p>Agent 开发者不应该直接操作 MemRouter 的 <code>MemRouterPipeline</code>、<code>BackendQueryInstruction</code>、<code>OpenVikingAdapter</code> 等内部概念。需要一个<strong>面向 Agent 的薄封装层</strong>：</p>
+  <pre>Agent 开发者视角：
+    memory_client = AgentMemoryClient.from_config(config)
+    memory_context = await memory_client.retrieve(
+        query=user_message,
+        conversation_history=messages,  # Agent 自动提供
+    )
+    # memory_context 是一个字符串或结构化结果，直接注入 prompt 即可
+
+不需要关心：
+    - TemplateMatcher 怎么打分
+    - RouteDecision 走哪个分支
+    - OpenViking 的 IntentAnalyzer 是否被跳过
+    - 多个 backend 怎么并行执行</pre>
+
+  <h3>3.2 SDK 接口设计</h3>
+  <pre># echomem/agent_sdk/memory_client.py
+
+from dataclasses import dataclass
+from typing import List, Optional, Dict, Any
+import asyncio
+
+
+@dataclass
+class MemoryContext:
+    """Agent 可直接消费的记忆上下文。"""
+    text: str                          # 格式化后的记忆文本，可直接注入 prompt
+    sources: List[Dict[str, Any]]      # 来源信息（URI、score、backend_id 等）
+    retrieval_trace: Dict[str, Any]    # 检索过程元数据（调试/观测用）
+    query_plan: Optional[Dict] = None  # OpenViking 的 query_plan（如走 VLM 路径）
+
+
+class AgentMemoryClient:
+    """Agent 侧记忆检索客户端。
+
+    封装了 MemRouter + OpenViking 的完整调用链路，对 Agent 暴露极简接口。
+
+    Usage:
+        client = AgentMemoryClient.from_config({
+            "embedder": {"provider": "sentence-transformers", "model": "all-MiniLM-L6-v2"},
+            "openviking": {"base_url": "...", "api_key": "..."},
+        })
+
+        memory_ctx = await client.retrieve(
+            query="你还记得我喜欢什么颜色吗",
+            conversation_history=[
+                {"role": "user", "content": "我的生日是 5 月 20 日"},
+                {"role": "assistant", "content": "好的，我记下了。"},
+                {"role": "user", "content": "你还记得我喜欢什么颜色吗"},
+            ],
+        )
+
+        # 注入到 system prompt
+        system_prompt = f"""You are a helpful assistant.
+        Relevant memories from previous conversations:
+        {memory_ctx.text}
+        """
+    """
+
+    def __init__(
+        self,
+        memrouter_pipeline: "MemRouterPipeline",
+        backend_executors: Dict[str, Any],  # backend_id -> executor client
+        session_compressor: Optional[Any] = None,
+    ):
+        self._pipeline = memrouter_pipeline
+        self._executors = backend_executors
+        self._session_compressor = session_compressor
+
+    # ------------------------------------------------------------------ #
+    # Public API
+    # ------------------------------------------------------------------ #
+
+    async def retrieve(
+        self,
+        query: str,
+        conversation_history: Optional[List[Dict[str, str]]] = None,
+        max_memories: int = 5,
+        include_trace: bool = False,
+    ) -> MemoryContext:
+        """Agent 调用记忆检索的统一入口。
+
+        Args:
+            query: 当前用户 query（或最后一条用户消息）。
+            conversation_history: 完整对话历史，用于 session 压缩和上下文传递。
+            max_memories: 最多返回多少条记忆。
+            include_trace: 是否在结果中包含详细的检索 trace。
+
+        Returns:
+            MemoryContext: 格式化后的记忆文本 + 来源信息。
+        """
+        # Step 1: 调用 MemRouter 做路由 + 生成查询指令
+        route_result = self._pipeline.route(query)
+
+        if not route_result.query_instructions:
+            # MemRouter 没有生成查询指令（无匹配模板且无 adapter fallback）
+            return MemoryContext(
+                text="",
+                sources=[],
+                retrieval_trace={"route_result": route_result.model_dump()},
+            )
+
+        # Step 2: 并行执行所有 backend 的查询指令
+        backend_results = await self._execute_instructions(
+            route_result=route_result,
+            conversation_history=conversation_history,
+        )
+
+        # Step 3: 合并、排序、截断结果
+        merged_memories = self._merge_results(backend_results, max_memories)
+
+        # Step 4: 格式化为 Agent 可消费的文本
+        memory_text = self._format_memories(merged_memories)
+
+        trace = {
+            "route_result": route_result.model_dump(),
+            "query_instructions": [i.model_dump() for i in route_result.query_instructions],
+            "backend_results": {bid: len(r.get("memories", [])) for bid, r in backend_results.items()},
+        }
+
+        return MemoryContext(
+            text=memory_text,
+            sources=merged_memories,
+            retrieval_trace=trace if include_trace else {},
+            query_plan=backend_results.get("openviking_memory_backend", {}).get("query_plan"),
+        )
+
+    # ------------------------------------------------------------------ #
+    # Internal helpers
+    # ------------------------------------------------------------------ #
+
+    async def _execute_instructions(
+        self,
+        route_result: "MemBackendRouteResult",
+        conversation_history: Optional[List[Dict[str, str]]],
+    ) -> Dict[str, Dict[str, Any]]:
+        """并行执行所有 query_instructions，返回各 backend 的原始结果。"""
+
+        async def _execute_one(inst: "BackendQueryInstruction") -> tuple:
+            backend_id = inst.backend_id
+            executor = self._executors.get(backend_id)
+            if executor is None:
+                return backend_id, {"error": f"No executor registered for backend {backend_id}"}
+
+            # 决策：是否传递 session_info
+            # - 如果 skip_intent_analysis=true：不需要 session（MemRouter 已经决定了意图）
+            # - 如果 skip_intent_analysis=false：需要 session 给 OpenViking 做意图分析
+            session_info = None
+            if not inst.skip_intent_analysis and conversation_history:
+                session_info = self._build_session_info(conversation_history)
+
+            try:
+                result = await executor.execute(inst, session_info=session_info)
+                return backend_id, result
+            except Exception as e:
+                return backend_id, {"error": str(e)}
+
+        tasks = [_execute_one(inst) for inst in route_result.query_instructions]
+        results = await asyncio.gather(*tasks)
+        return {bid: res for bid, res in results}
+
+    def _build_session_info(
+        self, conversation_history: List[Dict[str, str]]
+    ) -> Dict[str, Any]:
+        """将 Agent 的对话历史压缩为 OpenViking 需要的 session_info。"""
+        # 如果有 session_compressor，使用它生成 summary
+        if self._session_compressor:
+            summary = self._session_compressor.compress(conversation_history)
+        else:
+            # 简单 fallback：取最近 N 条消息
+            summary = ""
+
+        recent_messages = conversation_history[-5:] if len(conversation_history) > 5 else conversation_history
+
+        return {
+            "latest_archive_overview": summary,
+            "current_messages": recent_messages,
+        }
+
+    def _merge_results(
+        self,
+        backend_results: Dict[str, Dict[str, Any]],
+        max_memories: int,
+    ) -> List[Dict[str, Any]]:
+        """合并多个 backend 的结果，按 score 排序，截断。"""
+        all_memories = []
+        for backend_id, result in backend_results.items():
+            if "error" in result:
+                continue
+            for mem in result.get("memories", []):
+                mem["_backend_id"] = backend_id
+                all_memories.append(mem)
+
+        # 按 score 降序排序
+        all_memories.sort(key=lambda m: m.get("score", 0), reverse=True)
+        return all_memories[:max_memories]
+
+    @staticmethod
+    def _format_memories(memories: List[Dict[str, Any]]) -> str:
+        """将记忆列表格式化为自然语言文本，便于注入 prompt。"""
+        if not memories:
+            return ""
+
+        lines = ["=== Relevant Memories ==="]
+        for i, mem in enumerate(memories, 1):
+            abstract = mem.get("abstract", "")
+            category = mem.get("category", "")
+            backend = mem.get("_backend_id", "unknown")
+            lines.append(f"{i}. [{backend}] {category}: {abstract}")
+        lines.append("=== End of Memories ===")
+        return "\n".join(lines)
+
+    @classmethod
+    def from_config(cls, config: Dict[str, Any]) -> "AgentMemoryClient":
+        """Factory method from configuration dict."""
+        # 初始化 MemRouter pipeline
+        from echomem.pipeline import MemRouterPipeline
+        from echomem.embeddings.sentence_transformers import SentenceTransformersEmbedder
+
+        embedder_config = config.get("embedder", {})
+        embedder = SentenceTransformersEmbedder(
+            model_name=embedder_config.get("model", "all-MiniLM-L6-v2")
+        )
+        pipeline = MemRouterPipeline.with_defaults(embedder=embedder)
+
+        # 初始化各 backend executor
+        executors = {}
+        if "openviking" in config:
+            from echomem.agent_sdk.openviking_executor import OpenVikingExecutor
+            executors["openviking_memory_backend"] = OpenVikingExecutor(
+                config=config["openviking"]
+            )
+
+        return cls(
+            memrouter_pipeline=pipeline,
+            backend_executors=executors,
+        )</pre>
+</div>
+
+<h2>四、Backend Executor 实现</h2>
+
+<div class="card">
+  <h3>4.1 OpenViking Executor</h3>
+  <p>Executor 是 Agent SDK 中实际调用后端的组件，每个 backend 一个 executor。</p>
+  <pre># echomem/agent_sdk/openviking_executor.py
+
+from typing import Any, Dict, Optional
+
+from openviking import OpenVikingClient  # OpenViking SDK
+
+
+class OpenVikingExecutor:
+    """执行 MemRouter 生成的 OpenViking 查询指令。"""
+
+    def __init__(self, config: Dict[str, Any]):
+        self._client = OpenVikingClient(
+            base_url=config["base_url"],
+            api_key=config["api_key"],
+        )
+
+    async def execute(
+        self,
+        instruction: "BackendQueryInstruction",
+        session_info: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """根据 instruction 选择调用路径。"""
+
+        if instruction.skip_intent_analysis:
+            # Fast path: 直接执行 instruction，绕过 IntentAnalyzer
+            result = await self._client.execute_instruction(
+                instruction=instruction.model_dump(),
+            )
+        else:
+            # Normal path: 走 OpenViking 的 search()，传入 session_info
+            result = await self._client.search(
+                query=instruction.query,
+                target_uri=instruction.target_uri or "",
+                session_info=session_info,
+                limit=instruction.extra_params.get("limit", 10),
+                level=instruction.level,
+                filter=instruction.filter,
+            )
+
+        # 统一返回格式（与 FindResult 兼容）
+        return {
+            "memories": [
+                {
+                    "uri": m.uri,
+                    "abstract": m.abstract,
+                    "score": m.score,
+                    "category": m.category,
+                    "context_type": m.context_type.value,
+                }
+                for m in result.memories
+            ],
+            "resources": [...],  # 同理
+            "skills": [...],
+            "query_plan": result.query_plan.to_dict() if result.query_plan else None,
+            "total": result.total,
+        }</pre>
+
+  <h3>4.2 Graph Executor（示例）</h3>
+  <pre># echomem/agent_sdk/graph_executor.py
+
+class GraphExecutor:
+    """执行 Graph memory backend 的查询指令。"""
+
+    def __init__(self, config: Dict[str, Any]):
+        self._client = GraphClient(config["endpoint"])
+
+    async def execute(self, instruction, session_info=None):
+        extra = instruction.extra_params
+        result = await self._client.traverse(
+            root_entity=extra.get("root_entity_hint"),
+            hop_depth=extra.get("hop_depth", 1),
+            direction=extra.get("traversal_direction", "both"),
+            query=instruction.query,
+        )
+        return {
+            "memories": [
+                {"uri": n["id"], "abstract": n["label"], "score": n.get("relevance", 1.0)}
+                for n in result["nodes"]
+            ],
+            "total": len(result["nodes"]),
+        }</pre>
+</div>
+
+<h2>五、Agent 集成模式</h2>
+
+<div class="card">
+  <h3>5.1 模式一：System Prompt 注入（推荐）</h3>
+  <p>检索到的记忆作为 system prompt 的一部分，在每次 LLM 调用前注入。</p>
+  <pre># 伪代码：higo / openclaw Agent 集成
+
+class MemoryAugmentedAgent:
+    def __init__(self, memory_client: AgentMemoryClient, llm_client):
+        self.memory = memory_client
+        self.llm = llm_client
+
+    async def chat(self, user_message: str, conversation: List[Message]) -> str:
+        # 1. 检索记忆
+        memory_ctx = await self.memory.retrieve(
+            query=user_message,
+            conversation_history=[{"role": m.role, "content": m.content} for m in conversation],
+            max_memories=5,
+        )
+
+        # 2. 组装 messages
+        messages = [
+            {"role": "system", "content": self._build_system_prompt(memory_ctx)},
+            *self._convert_conversation(conversation),
+            {"role": "user", "content": user_message},
+        ]
+
+        # 3. 调用 LLM
+        response = await self.llm.chat(messages)
+        return response
+
+    def _build_system_prompt(self, memory_ctx: MemoryContext) -> str:
+        base = "You are a helpful personal assistant."
+        if memory_ctx.text:
+            base += f"\n\n{memory_ctx.text}\n\nUse the above memories to personalize your response."
+        return base</pre>
+
+  <h3>5.2 模式二：Tool / Function Call</h3>
+  <p>把记忆检索封装为一个 Tool，让 LLM 自己决定何时调用。</p>
+  <pre># Tool 定义（OpenAI function calling 格式）
+
+MEMORY_RETRIEVAL_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "retrieve_memory",
+        "description": "Retrieve relevant memories from the user's long-term memory based on the current query.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query for memory retrieval.",
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum number of memories to retrieve.",
+                    "default": 5,
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+# Agent 流程
+async def chat_with_tool(self, user_message, conversation):
+    messages = [...]  # system + history + user
+
+    # 第一次 LLM 调用（可能触发 tool call）
+    response = await self.llm.chat_with_tools(messages, tools=[MEMORY_RETRIEVAL_TOOL])
+
+    if response.tool_calls:
+        for tool_call in response.tool_calls:
+            if tool_call.function.name == "retrieve_memory":
+                args = json.loads(tool_call.function.arguments)
+                memory_ctx = await self.memory.retrieve(
+                    query=args["query"],
+                    conversation_history=conversation,
+                    max_memories=args.get("max_results", 5),
+                )
+                # 把 tool result 加入 messages
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": memory_ctx.text,
+                })
+
+        # 第二次 LLM 调用（带记忆上下文）
+        final_response = await self.llm.chat(messages)
+        return final_response.content
+    else:
+        return response.content</pre>
+
+  <h3>5.3 模式对比</h3>
+  <table>
+    <tr><th>维度</th><th>System Prompt 注入</th><th>Tool Call</th></tr>
+    <tr><td>触发时机</td><td>每次 user message <strong>自动触发</strong></td><td>LLM <strong>自主决定</strong>是否调用</td></tr>
+    <tr><td>延迟</td><td>固定（每次都有检索开销）</td><td>可变（可能不需要检索）</td></tr>
+    <tr><td>Token 成本</td><td>固定（检索 + prompt 注入）</td><td>可能更低（LLM 不触发则不检索）</td></tr>
+    <tr><td>召回率</td><td>高（不遗漏）</td><td>依赖 LLM 判断（可能遗漏）</td></tr>
+    <tr><td>实现复杂度</td><td>低</td><td>中（需要处理 tool call 轮次）</td></tr>
+    <tr><td>推荐场景</td><td>个人助理、客服 Agent（记忆是核心能力）</td><td>通用 Agent（记忆是增强能力）</td></tr>
+  </table>
+</div>
+
+<h2>六、记忆检索触发策略</h2>
+
+<div class="card">
+  <h3>6.1 触发时机</h3>
+  <p>并非每个 user message 都需要检索记忆。Agent 需要一个 <code>MemoryTriggerGate</code> 来判断是否触发检索：</p>
+  <pre># echomem/agent_sdk/trigger_gate.py
+
+class MemoryTriggerGate:
+    """决定是否对当前 query 触发记忆检索。"""
+
+    # 简单规则：包含记忆相关关键词
+    _MEMORY_KEYWORDS = re.compile(
+        r"(记得|以前|之前|上次|你说过|我告诉过|我的|我喜欢|我讨厌|"
+        r"remember|before|previously|last time|you said|my favorite|I hate|"
+        r"我提到过|我们讨论过)",
+        re.IGNORECASE,
+    )
+
+    # 排除：明显不需要记忆的问题
+    _EXCLUDE_PATTERNS = [
+        re.compile(r"^(hi|hello|hey|你好|在吗|谢谢|再见)$", re.IGNORECASE),
+        re.compile(r"^\d+[\+\-\*\/]\d+\s*=?\s*$"),  # 纯数学计算
+    ]
+
+    @classmethod
+    def should_retrieve(cls, query: str, conversation: List[Dict]) -> bool:
+        """返回 True 表示应该触发记忆检索。"""
+        # 排除短句
+        if len(query) < 5:
+            return False
+
+        # 排除纯问候/计算
+        for pattern in cls._EXCLUDE_PATTERNS:
+            if pattern.match(query.strip()):
+                return False
+
+        # 包含记忆关键词
+        if cls._MEMORY_KEYWORDS.search(query):
+            return True
+
+        # 轮次触发：每 N 轮对话强制检索一次（兜底）
+        if len(conversation) % 5 == 0:
+            return True
+
+        return False</pre>
+
+  <h3>6.2 与 MemRouter 的协同</h3>
+  <p><code>MemoryTriggerGate</code> 是 Agent 侧的<strong>粗筛</strong>，MemRouter 是<strong>精路由</strong>：</p>
+  <div class="flow">
+    <div class="node"><strong>User Query</strong></div>
+    <span class="arrow">→</span>
+    <div class="node"><strong>TriggerGate</strong><br/><small>粗筛：是否可能涉及记忆？</small></div>
+    <span class="arrow">→</span>
+    <div class="node"><strong>MemRouter</strong><br/><small>精路由：哪个后端？什么指令？</small></div>
+    <span class="arrow">→</span>
+    <div class="node"><strong>Backend</strong><br/><small>执行检索</small></div>
+  </div>
+
+  <p>这样设计的好处：</p>
+  <ul>
+    <li>TriggerGate 过滤掉 60-70% 的无关 query（如 "你好"、"谢谢"），减少 MemRouter 调用</li>
+    <li>MemRouter 负责精确判断记忆类型（个人事实 vs 偏好 vs 聚合 vs 聊天回溯）</li>
+    <li>即使 TriggerGate 误触发（把非记忆 query 放过去），MemRouter 会正确路由到 fallback（通常是默认后端返回空结果）</li>
+  </ul>
+</div>
+
+<h2>七、完整集成示例</h2>
+
+<div class="card">
+  <h3>7.1 higo Agent 集成示例</h3>
+  <pre># higo_agent.py
+
+import asyncio
+from echomem.agent_sdk.memory_client import AgentMemoryClient, MemoryContext
+
+
+class HigoMemoryAgent:
+    """集成了 MemRouter + OpenViking 的 higo Agent。"""
+
+    def __init__(self):
+        self.memory_client = AgentMemoryClient.from_config({
+            "embedder": {"model": "sentence-transformers/all-MiniLM-L6-v2"},
+            "openviking": {
+                "base_url": "http://localhost:8080",
+                "api_key": "sk-xxx",
+            },
+        })
+        self.conversation_history = []
+
+    async def handle_user_message(self, user_message: str) -> str:
+        from echomem.agent_sdk.trigger_gate import MemoryTriggerGate
+
+        # ① 判断是否触发记忆检索
+        if MemoryTriggerGate.should_retrieve(user_message, self.conversation_history):
+            # ② 检索记忆
+            memory_ctx = await self.memory_client.retrieve(
+                query=user_message,
+                conversation_history=self.conversation_history,
+                max_memories=5,
+                include_trace=True,
+            )
+            print(f"[Memory] Retrieved {len(memory_ctx.sources)} memories")
+            print(f"[Memory] Trace: {memory_ctx.retrieval_trace}")
+        else:
+            memory_ctx = MemoryContext(text="", sources=[], retrieval_trace={})
+            print("[Memory] Skipped retrieval (trigger gate)")
+
+        # ③ 组装 prompt
+        system_prompt = self._build_system_prompt(memory_ctx)
+        messages = [
+            {"role": "system", "content": system_prompt},
+            *self._history_to_messages(),
+            {"role": "user", "content": user_message},
+        ]
+
+        # ④ 调用 LLM（higo 内部封装）
+        response = await self._call_llm(messages)
+
+        # ⑤ 更新对话历史
+        self.conversation_history.append({"role": "user", "content": user_message})
+        self.conversation_history.append({"role": "assistant", "content": response})
+
+        return response
+
+    def _build_system_prompt(self, memory_ctx: MemoryContext) -> str:
+        parts = [
+            "You are Higo, a personal AI assistant with long-term memory.",
+            "You remember facts, preferences, and past conversations with the user.",
+        ]
+        if memory_ctx.text:
+            parts.append(f"\n{memory_ctx.text}\n")
+            parts.append("Use the above memories to personalize your response.")
+        return "\n".join(parts)
+
+    def _history_to_messages(self):
+        return [
+            {"role": m["role"], "content": m["content"]}
+            for m in self.conversation_history[-20:]  # 最近 20 轮
+        ]
+
+    async def _call_llm(self, messages):
+        # higo 内部 LLM 调用
+        from higo.llm import chat_completion
+        return await chat_completion(messages, model="gpt-4")
+
+
+# 运行
+async def main():
+    agent = HigoMemoryAgent()
+
+    print(await agent.handle_user_message("我的生日是 1990 年 5 月 20 日"))
+    # → "好的，我记住了。"
+
+    print(await agent.handle_user_message("你还记得我喜欢什么颜色吗"))
+    # → [Memory] Retrieved 1 memories
+    # → "我记得你之前告诉过我你喜欢蓝色。"
+
+
+if __name__ == "__main__":
+    asyncio.run(main())</pre>
+
+  <h3>7.2 openclaw Agent 集成示例</h3>
+  <pre># openclaw_agent.py
+
+from echomem.agent_sdk.memory_client import AgentMemoryClient
+from openclaw.core import Agent, Tool
+
+
+class OpenClawMemoryPlugin:
+    """openclaw 插件形式集成 MemRouter + OpenViking。"""
+
+    def __init__(self, config: dict):
+        self.memory_client = AgentMemoryClient.from_config(config)
+
+    async def before_llm(self, agent: Agent, context: dict) -> dict:
+        """openclaw hook: 在每次 LLM 调用前注入记忆上下文。"""
+        user_message = context.get("user_message", "")
+        conversation = context.get("conversation", [])
+
+        memory_ctx = await self.memory_client.retrieve(
+            query=user_message,
+            conversation_history=conversation,
+        )
+
+        if memory_ctx.text:
+            # 注入到 context 中，openclaw 会自动加入 system prompt
+            context["memory_context"] = memory_ctx.text
+            context["memory_sources"] = memory_ctx.sources
+
+        return context
+
+
+# openclaw 配置
+openclaw_config = {
+    "plugins": [
+        {
+            "name": "memory",
+            "class": "OpenClawMemoryPlugin",
+            "config": {
+                "embedder": {"model": "sentence-transformers/all-MiniLM-L6-v2"},
+                "openviking": {"base_url": "http://localhost:8080", "api_key": "sk-xxx"},
+            },
+        }
+    ]
+}</pre>
+</div>
+
+<h2>八、Session 上下文传递策略</h2>
+
+<div class="card">
+  <h3>8.1 什么时候传 session，什么时候不传？</h3>
+  <table>
+    <tr><th>场景</th><th>MemRouter 输出</th><th>是否传 session_info</th><th>原因</th></tr>
+    <tr><td>个人事实查询</td><td>skip_intent_analysis=true</td><td><span class="tag red">否</span></td><td>MemRouter 已明确意图，无需 VLM 再分析</td></tr>
+    <tr><td>偏好查询</td><td>skip_intent_analysis=true</td><td><span class="tag red">否</span></td><td>同上，直接向量检索即可</td></tr>
+    <tr><td>聚合摘要</td><td>skip_intent_analysis=false</td><td><span class="tag green">是</span></td><td>需要 session 上下文理解聚合范围</td></tr>
+    <tr><td>聊天回溯</td><td>skip_intent_analysis=false</td><td><span class="tag green">是</span></td><td>需要 session 历史定位具体对话</td></tr>
+    <tr><td>LLM Fallback</td><td>不确定</td><td><span class="tag green">是</span></td><td>兜底情况给足上下文</td></tr>
+  </table>
+
+  <h3>8.2 Session 压缩</h3>
+  <p>Agent 的对话历史可能很长（几十轮甚至上百轮），直接传给 OpenViking 会超 token 限制。需要一个 <strong>session compressor</strong>：</p>
+  <pre>class SessionCompressor:
+    """将长对话历史压缩为 OpenViking 可接受的 session_summary。"""
+
+    def compress(self, messages: List[Dict[str, str]], max_chars: int = 1000) -> str:
+        # 方案 A：简单拼接（短对话）
+        if len(messages) <= 10:
+            return "\n".join(f"{m['role']}: {m['content']}" for m in messages)
+
+        # 方案 B：LLM 摘要（长对话）
+        # 使用一个轻量级模型对对话进行摘要
+        summary = self._llm_summarize(messages)
+        return summary[:max_chars]
+
+    def _llm_summarize(self, messages):
+        prompt = """Summarize the following conversation in 200 words,
+        focusing on facts, preferences, and decisions mentioned by the user."""
+        # ... 调用轻量级 LLM</pre>
+</div>
+
+<h2>九、观测与调试</h2>
+
+<div class="card">
+  <h3>9.1 检索 Trace</h3>
+  <p>每次记忆检索都应记录完整的 trace，方便 Agent 开发者调试：</p>
+  <pre>{
+  "query": "你还记得我喜欢什么颜色吗",
+  "trigger_gate": {"should_retrieve": true, "reason": "memory_keyword_match"},
+  "route_result": {
+    "method": "template_embedding",
+    "routes": [{"backend_id": "openviking_memory_backend", "confidence": 0.81}]
+  },
+  "query_instructions": [{
+    "backend_id": "openviking_memory_backend",
+    "search_mode": "find",
+    "skip_intent_analysis": true,
+    "target_uri": "viking://memories",
+    "level": [2]
+  }],
+  "backend_results": {
+    "openviking_memory_backend": {
+      "total": 1,
+      "top_memory": {"uri": "viking://memories/facts/color", "score": 0.92}
+    }
+  },
+  "latency_ms": 45,
+  "token_savings": 3500  # 本次节省的 VLM tokens
+}</pre>
+
+  <h3>9.2 可观测指标</h3>
+  <table>
+    <tr><th>指标</th><th>说明</th></tr>
+    <tr><td><code>memory_retrieval_latency_ms</code></td><td>端到端记忆检索延迟（MemRouter + Backend）</td></tr>
+    <tr><td><code>memory_retrieval_count</code></td><td>单位时间内检索次数</td></tr>
+    <tr><td><code>skip_intent_analysis_rate</code></td><td>跳过 IntentAnalyzer 的比例（越高越好）</td></tr>
+    <tr><td><code>token_savings_per_query</code></td><td>每次查询节省的 VLM tokens</td></tr>
+    <tr><td><code>memory_hit_rate</code></td><td>检索返回非空结果的比例</td></tr>
+    <tr><td><code>memory_relevance_score</code></td><td>检索结果的相关性平均分</td></tr>
+  </table>
+</div>
+
+<h2>十、实施检查清单</h2>
+
+<div class="card">
+  <table>
+    <tr><th>步骤</th><th>任务</th><th>负责方</th></tr>
+    <tr><td>1</td><td>OpenViking SDK 实现 <code>execute_instruction()</code> API</td><td>OpenViking 团队</td></tr>
+    <tr><td>2</td><td>发布 <code>echomem-agent-sdk</code> PyPI 包（含 MemoryClient + Executors）</td><td>EchoMem 团队</td></tr>
+    <tr><td>3</td><td>higo Agent 接入：在 <code>chat()</code> 流程中调用 <code>AgentMemoryClient.retrieve()</code></td><td>higo 团队</td></tr>
+    <tr><td>4</td><td>openclaw Agent 接入：开发 Memory Plugin，注册 <code>before_llm</code> hook</td><td>openclaw 团队</td></tr>
+    <tr><td>5</td><td>配置 session compressor（轻量级 LLM 摘要服务）</td><td>Agent 团队 / Infra</td></tr>
+    <tr><td>6</td><td>搭建观测大盘（Grafana），监控 token savings / latency / hit rate</td><td>Infra 团队</td></tr>
+    <tr><td>7</td><td>A/B 测试：对比有/无 MemRouter 的 Agent 回复质量 + token 成本</td><td>Agent 团队</td></tr>
+  </table>
+</div>
+
+<h2>十一、MemRouter 作为 OpenViking 上层封装（VikingBot 模式）</h2>
+
+<div class="card">
+  <h3>11.1 核心思路</h3>
+  <p>MemRouter 不需要重新发明一套 Agent 接口，而是可以<strong>包装现有的 <code>VikingClient</code></strong>，对 Claw / VikingBot 保持接口完全兼容。</p>
+  <p>Agent 只需把 <code>VikingClient</code> 替换为 <code>MemRouterVikingClient</code>，其他代码<strong>零改动</strong>。</p>
+
+  <h3>11.2 架构关系</h3>
+  <pre style="background:transparent;border:none;padding:0;">
+┌─────────────────────────────────────────────────────────────┐
+│  VikingBot / Claw Agent                                     │
+│  ─────────────────────────────────────────────────────────  │
+│  client.search(query)     ← 接口不变                         │
+│  client.commit(session_id, messages)  ← 接口不变             │
+│  client.find(query)       ← 接口不变                         │
+│  client.read_content(uri) ← 接口不变                         │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  MemRouterVikingClient （增强层）                            │
+│  ─────────────────────────────────────────────────────────  │
+│  search() → MemRouter.route() → 选择 fast / normal 路径     │
+│  commit() → 直接透传到底层 VikingClient.commit()            │
+│  find()   → 直接透传（或走 MemRouter fast path）             │
+│  其他方法  → 全部透传                                         │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  VikingClient （OpenViking 原生客户端）                       │
+│  ─────────────────────────────────────────────────────────  │
+│  client.search()  →  VikingFS.search()  (IntentAnalyzer)    │
+│  client.find()    →  VikingFS.find()    (直接检索)           │
+│  client.commit()  →  Session.add_message() + commit()       │
+└─────────────────────────────────────────────────────────────┘
+  </pre>
+
+  <h3>11.3 为什么不是替代，而是封装？</h3>
+  <table>
+    <tr><th>方法</th><th>VikingClient 原有行为</th><th>MemRouterVikingClient 增强行为</th></tr>
+    <tr>
+      <td><code>search()</code></td>
+      <td>直接调用 OpenViking <code>VikingFS.search()</code>，<strong>总是</strong>走 IntentAnalyzer（~3K-15K tokens）</td>
+      <td>先调用 MemRouter 路由：高置信则走 <code>execute_instruction()</code>（<strong>零 VLM</strong>）；低置信则回退到原 <code>search()</code></td>
+    </tr>
+    <tr>
+      <td><code>find()</code></td>
+      <td>直接调用 <code>VikingFS.find()</code>，无 session，无 IntentAnalyzer</td>
+      <td>直接透传（find 本身已是最快路径，MemRouter 不干预）</td>
+    </tr>
+    <tr>
+      <td><code>commit()</code></td>
+      <td>创建 session → add_message → commit，写入持久化存储</td>
+      <td><strong>完全透传</strong>。MemRouter 是只读路由层，不参与写入</td>
+    </tr>
+    <tr>
+      <td><code>read_content()</code></td>
+      <td>读取 URI 的 L0/L1/L2 内容</td>
+      <td>完全透传</td>
+    </tr>
+    <tr>
+      <td><code>add_resource()</code></td>
+      <td>添加外部资源到 OpenViking</td>
+      <td>完全透传</td>
+    </tr>
+  </table>
+</div>
+
+<div class="card">
+  <h3>11.4 MemRouterVikingClient 实现</h3>
+  <pre># echomem/agent_sdk/memrouter_viking_client.py
+
+import asyncio
+from typing import Any, Dict, List, Optional
+
+from loguru import logger
+
+from echomem.pipeline import MemRouterPipeline
+from echomem.query_instruction_builder import QueryInstructionBuilder
+from echomem.adapters.openviking import OpenVikingAdapter
+
+
+class MemRouterVikingClient:
+    """MemRouter 增强的 VikingClient 封装。
+
+    对 Claw / VikingBot 暴露与 VikingClient 完全兼容的接口，
+    内部通过 MemRouter 做路由优化，高置信场景跳过 OpenViking IntentAnalyzer。
+
+    Usage:
+        # 原来 VikingBot 的用法：
+        # client = VikingClient(agent_id="shared")
+
+        # 替换为 MemRouter 增强版（一行改动）：
+        client = MemRouterVikingClient(viking_client=VikingClient(agent_id="shared"))
+        await client.initialize()
+
+        # 以下接口完全不变：
+        result = await client.search("你还记得我喜欢什么颜色吗")
+        await client.commit(session_id="xxx", messages=[...])
+        result = await client.find("蓝色")
+    """
+
+    def __init__(
+        self,
+        viking_client: Any,  # VikingClient 实例
+        memrouter_pipeline: Optional[MemRouterPipeline] = None,
+    ):
+        self._viking = viking_client
+        self._pipeline = memrouter_pipeline
+        self._initialized = False
+
+    async def initialize(self):
+        """初始化底层 VikingClient + MemRouter Pipeline。"""
+        # 初始化底层 VikingClient（如果它需要）
+        if hasattr(self._viking, "initialize"):
+            await self._viking.initialize()
+        elif hasattr(self._viking, "_initialize"):
+            await self._viking._initialize()
+
+        # 初始化 MemRouter（如果未提供）
+        if self._pipeline is None:
+            from echomem.embeddings.sentence_transformers import SentenceTransformersEmbedder
+            embedder = SentenceTransformersEmbedder(model_name="all-MiniLM-L6-v2")
+            self._pipeline = MemRouterPipeline.with_defaults(embedder=embedder)
+
+        self._initialized = True
+        logger.info("MemRouterVikingClient initialized")
+
+    # ==================================================================
+    # 增强方法：search — MemRouter 路由优化核心
+    # ==================================================================
+
+    async def search(
+        self,
+        query: str,
+        target_uri: Optional[str] = None,
+        limit: int = 10,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """语义搜索（MemRouter 增强版）。
+
+        内部流程：
+            1. MemRouter 路由 → 生成 BackendQueryInstruction
+            2. 若 skip_intent_analysis=true → 调用 execute_instruction()（零 VLM）
+            3. 若 skip_intent_analysis=false → 回退到原 VikingClient.search()
+        """
+        if not self._initialized:
+            raise RuntimeError("MemRouterVikingClient not initialized. Call initialize() first.")
+
+        # Step 1: MemRouter 路由
+        route_result = self._pipeline.route(query)
+        instructions = route_result.query_instructions
+
+        if not instructions:
+            # MemRouter 未生成指令（无匹配模板）→ 回退到原 search
+            logger.debug("MemRouter produced no instructions; falling back to VikingClient.search")
+            return await self._viking.search(query, target_uri=target_uri, limit=limit, **kwargs)
+
+        # 取 primary backend 的指令（VikingBot 场景通常只有一个后端）
+        inst = instructions[0]
+        logger.info(
+            "MemRouter routed to backend=%s skip_ia=%s search_mode=%s",
+            inst.backend_id, inst.skip_intent_analysis, inst.search_mode,
+        )
+
+        # Step 2: 根据 MemRouter 决策选择调用路径
+        if inst.backend_id == "openviking_memory_backend" and inst.skip_intent_analysis:
+            # Fast path: 直接执行 instruction，绕过 IntentAnalyzer
+            return await self._execute_instruction_fast(inst, limit=limit)
+        else:
+            # Normal path: 回退到 VikingClient.search（带 session context）
+            return await self._viking.search(query, target_uri=target_uri, limit=limit, **kwargs)
+
+    async def _execute_instruction_fast(
+        self,
+        instruction: "BackendQueryInstruction",
+        limit: int = 10,
+    ) -> Dict[str, Any]:
+        """Fast path: 直接调用 OpenViking execute_instruction，绕过 IntentAnalyzer。"""
+        # 需要底层 OpenViking client 支持 execute_instruction
+        ov_client = self._viking.client  # VikingClient 内部的 AsyncHTTPClient
+
+        # 构造 instruction dict
+        inst_dict = instruction.model_dump()
+        inst_dict["limit"] = limit
+
+        try:
+            # 调用 OpenViking 的 execute_instruction（需 OpenViking 侧实现）
+            result = await ov_client.execute_instruction(inst_dict)
+        except AttributeError:
+            # OpenViking 尚未实现 execute_instruction → 优雅降级
+            logger.warning("OpenViking execute_instruction not available; falling back to find()")
+            return await self._viking.find(
+                query=instruction.query,
+                target_uri=instruction.target_uri or "",
+                limit=limit,
+            )
+
+        # 统一返回 VikingClient.search 格式的 dict
+        return {
+            "memories": [
+                self._matched_context_to_dict(m)
+                for m in getattr(result, "memories", [])
+            ],
+            "resources": [
+                self._matched_context_to_dict(r)
+                for r in getattr(result, "resources", [])
+            ],
+            "skills": [
+                self._matched_context_to_dict(s)
+                for s in getattr(result, "skills", [])
+            ],
+            "total": getattr(result, "total", 0),
+            "query": instruction.query,
+            "target_uri": instruction.target_uri,
+            "_memrouter_meta": {
+                "route_method": "template_embedding",
+                "skip_intent_analysis": True,
+                "backend_id": instruction.backend_id,
+            },
+        }
+
+    # ==================================================================
+    # 透传方法：find / commit / 其他所有方法
+    # ==================================================================
+
+    async def find(self, query: str, target_uri: Optional[str] = None, **kwargs):
+        """直接透传到底层 VikingClient.find()。"""
+        return await self._viking.find(query, target_uri=target_uri, **kwargs)
+
+    async def commit(self, session_id: str, messages: List[Dict[str, Any]], user_id: str = None):
+        """直接透传到底层 VikingClient.commit()。MemRouter 不参与写入。"""
+        return await self._viking.commit(session_id, messages, user_id=user_id)
+
+    async def read_content(self, uri: str, level: str = "abstract") -> str:
+        """直接透传。"""
+        return await self._viking.read_content(uri, level=level)
+
+    async def add_resource(self, local_path: str, desc: str) -> Optional[Dict[str, Any]]:
+        """直接透传。"""
+        return await self._viking.add_resource(local_path, desc)
+
+    async def list_resources(self, path: Optional[str] = None, recursive: bool = False):
+        """直接透传。"""
+        return await self._viking.list_resources(path=path, recursive=recursive)
+
+    async def search_user_memory(self, query: str, user_id: str):
+        """直接透传。"""
+        return await self._viking.search_user_memory(query, user_id)
+
+    async def search_memory(self, query: str, user_ids, agent_user_id: str, limit: int = 10):
+        """直接透传。"""
+        return await self._viking.search_memory(query, user_ids, agent_user_id, limit=limit)
+
+    async def grep(self, uri: str, pattern: str, **kwargs):
+        """直接透传。"""
+        return await self._viking.grep(uri, pattern, **kwargs)
+
+    async def glob(self, pattern: str, uri: Optional[str] = None):
+        """直接透传。"""
+        return await self._viking.glob(pattern, uri=uri)
+
+    async def close(self):
+        """关闭底层 VikingClient。"""
+        if hasattr(self._viking, "close"):
+            await self._viking.close()
+
+    # ==================================================================
+    # 内部辅助
+    # ==================================================================
+
+    @staticmethod
+    def _matched_context_to_dict(matched_context: Any) -> Dict[str, Any]:
+        """将 MatchedContext 转换为 dict（与 VikingClient 格式兼容）。"""
+        return {
+            "uri": getattr(matched_context, "uri", ""),
+            "context_type": str(getattr(matched_context, "context_type", "")),
+            "abstract": getattr(matched_context, "abstract", ""),
+            "overview": getattr(matched_context, "overview", None),
+            "category": getattr(matched_context, "category", ""),
+            "score": getattr(matched_context, "score", 0.0),
+            "match_reason": getattr(matched_context, "match_reason", ""),
+        }
+
+    # 支持异步上下文管理器
+    async def __aenter__(self):
+        await self.initialize()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+</pre>
+
+  <h3>11.5 VikingBot 接入示例（一行替换）</h3>
+  <pre># 原来 VikingBot 的 ov_server.py
+
+class VikingClient:
+    def __init__(self, agent_id: Optional[str] = None):
+        ...
+        self.client = ov.AsyncHTTPClient(...)
+
+    async def search(self, query, target_uri=None, limit=10):
+        result = await self.client.search(query, target_uri=target_uri, limit=limit)
+        return {...}
+
+    async def commit(self, session_id, messages, user_id=None):
+        ...
+
+
+# ========== 接入 MemRouter 后（ov_server.py 修改）==========
+
+from echomem.agent_sdk.memrouter_viking_client import MemRouterVikingClient
+
+class VikingClient:
+    def __init__(self, agent_id: Optional[str] = None, use_memrouter: bool = True):
+        ...
+        self.client = ov.AsyncHTTPClient(...)
+
+        # 新增：MemRouter 增强层
+        self._use_memrouter = use_memrouter
+        if use_memrouter:
+            self._memrouter_client = MemRouterVikingClient(viking_client=self)
+
+    async def initialize(self):
+        """新增初始化入口，Agent 启动时调用"""
+        if self._use_memrouter:
+            await self._memrouter_client.initialize()
+
+    async def search(self, query, target_uri=None, limit=10):
+        # 如果启用了 MemRouter，走增强路径
+        if self._use_memrouter:
+            return await self._memrouter_client.search(
+                query, target_uri=target_uri, limit=limit
+            )
+        # 否则走原路径
+        result = await self.client.search(query, target_uri=target_uri, limit=limit)
+        return {...}
+
+    # commit/find/read_content/add_resource/list_resources 全部不变
+    # 因为 MemRouterVikingClient 已经做了透传
+
+
+# ========== VikingBot 启动代码（一行改动）==========
+
+# bot/vikingbot/agent/context.py 或入口文件
+
+async def create_viking_client(agent_id: str, use_memrouter: bool = True):
+    """创建 VikingClient，可选择启用 MemRouter 增强。"""
+    client = VikingClient(agent_id=agent_id, use_memrouter=use_memrouter)
+    await client.initialize()  # 新增：初始化 MemRouter
+    return client
+
+
+# 配置文件中控制开关
+# vikingbot/config.yaml
+openviking:
+  use_memrouter: true   # ← 总开关
+  memrouter:
+    embedder:
+      model: "sentence-transformers/all-MiniLM-L6-v2"
+</pre>
+
+  <h3>11.6 Claw 接入示例（零改动）</h3>
+  <pre># Claw Agent 使用 VikingClient 的方式（原有代码）
+
+from vikingbot.openviking_mount.ov_server import VikingClient
+
+class ClawMemoryPlugin:
+    def __init__(self, config):
+        self.client = VikingClient(agent_id=config["agent_id"])
+
+    async def retrieve(self, query: str, user_id: str):
+        # Claw 直接调用 VikingClient.search()
+        return await self.client.search(query, target_uri=f"viking://user/{user_id}/memories/")
+
+    async def store(self, session_id: str, messages: list):
+        # Claw 直接调用 VikingClient.commit()
+        return await self.client.commit(session_id, messages)
+
+
+# ========== 启用 MemRouter 后（Claw 零改动）==========
+
+# 只需修改 VikingClient 的创建方式，Claw 插件代码完全不变：
+
+# 原来：
+# client = VikingClient(agent_id="shared")
+
+# 替换为（在 VikingBot 配置层完成）：
+client = VikingClient(agent_id="shared", use_memrouter=True)
+await client.initialize()
+
+# Claw 插件的 retrieve() 和 store() 调用完全不变，
+# 但 retrieve() 内部已经走了 MemRouter 优化路径。
+</pre>
+</div>
+
+<div class="card">
+  <h3>11.7 三种调用路径对比（以 VikingBot search 为例）</h3>
+  <table>
+    <tr><th>路径</th><th>条件</th><th>VLM Tokens</th><th>延迟</th></tr>
+    <tr>
+      <td><strong>MemRouter Fast Path</strong></td>
+      <td>高置信模板命中 + skip_intent_analysis=true</td>
+      <td><span class="tag green">0</span></td>
+      <td>~30-50ms（embedding + 向量检索）</td>
+    </tr>
+    <tr>
+      <td><strong>MemRouter Normal Path</strong></td>
+      <td>命中但 skip_intent_analysis=false（聚合/聊天回溯）</td>
+      <td>~3K-15K</td>
+      <td>~200-500ms（VLM + 检索）</td>
+    </tr>
+    <tr>
+      <td><strong>Fallback Path</strong></td>
+      <td>MemRouter 未命中任何模板</td>
+      <td>~3K-15K</td>
+      <td>~200-500ms（原 VikingClient.search）</td>
+    </tr>
+  </table>
+
+  <h3>11.8 关键设计约束</h3>
+  <ul>
+    <li><span class="highlight">写入不经过 MemRouter</span>：<code>commit()</code> 直接透传到底层 VikingClient，MemRouter 是只读路由层</li>
+    <li><span class="highlight">接口完全兼容</span>：<code>MemRouterVikingClient</code> 不修改 VikingClient 的任何方法签名</li>
+    <li><span class="highlight">可开关</span>：<code>use_memrouter: false</code> 时行为与原来完全一致，便于 A/B 测试和问题排查</li>
+    <li><span class="highlight">优雅降级</span>：OpenViking 未实现 <code>execute_instruction()</code> 时，自动回退到 <code>find()</code></li>
+  </ul>
+</div>
+
+<h2>十二、更新后的实施检查清单</h2>
+
+<div class="card">
+  <table>
+    <tr><th>步骤</th><th>任务</th><th>负责方</th><th>影响面</th></tr>
+    <tr><td>1</td><td>OpenViking SDK 实现 <code>execute_instruction()</code></td><td>OpenViking 团队</td><td>SDK</td></tr>
+    <tr><td>2</td><td>发布 <code>echomem-agent-sdk</code>（含 MemRouterVikingClient）</td><td>EchoMem 团队</td><td>PyPI 包</td></tr>
+    <tr><td>3</td><td>VikingBot 修改 <code>ov_server.py</code>：引入 MemRouterVikingClient，增加 <code>use_memrouter</code> 开关</td><td>VikingBot 团队</td><td>bot/vikingbot</td></tr>
+    <tr><td>4</td><td>Claw 接入：零改动，只需确认 VikingBot 配置 <code>use_memrouter=true</code></td><td>Claw 团队</td><td>无</td></tr>
+    <tr><td>5</td><td>higo 接入：直接使用 MemRouterVikingClient 替代 VikingClient</td><td>higo 团队</td><td>higo agent</td></tr>
+    <tr><td>6</td><td>配置 session compressor</td><td>Agent 团队</td><td>infra</td></tr>
+    <tr><td>7</td><td>搭建观测大盘，监控 skip_intent_analysis_rate / token_savings</td><td>Infra 团队</td><td>observability</td></tr>
+    <tr><td>8</td><td>A/B 测试：对比 use_memrouter=true/false 的效果</td><td>Agent 团队</td><td>evaluation</td></tr>
+  </table>
+</div>
+
+</main>
+
+<footer>
+  Generated from EchoMem MemRouter Agent Integration Scheme · May 2026
+</footer>
+</body>
+</html>

@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MemRouter 查询指令生成方案设计</title>
+<style>
+  :root {
+    --bg: #0d1117; --fg: #c9d1d9; --muted: #8b949e;
+    --accent: #58a6ff; --accent2: #3fb950; --accent3: #f85149;
+    --accent4: #d2a8ff; --accent5: #ffa657; --border: #30363d;
+    --card: #161b22; --code: #1f2937;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:0; background:var(--bg); color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans SC",sans-serif;
+    line-height:1.7; }
+  header { border-bottom:1px solid var(--border); padding:2rem 1.5rem 1.5rem; text-align:center; }
+  h1 { margin:0 0 .5rem; font-size:1.8rem; color:#f0f6fc; }
+  .subtitle { color:var(--muted); font-size:.95rem; }
+  main { max-width:1000px; margin:0 auto; padding:1.5rem; }
+  h2 { color:var(--accent); border-bottom:1px solid var(--border); padding-bottom:.4rem; margin-top:2rem; font-size:1.3rem; }
+  h3 { color:var(--accent4); margin-top:1.6rem; font-size:1.05rem; }
+  h4 { color:var(--accent5); margin-top:1.2rem; font-size:1rem; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:1.2rem; margin:1rem 0; }
+  .tag { display:inline-block; padding:.15rem .5rem; border-radius:999px; font-size:.78rem; font-weight:600;
+    margin-right:.35rem; margin-bottom:.35rem; background:#21262d; color:var(--accent); border:1px solid var(--border); }
+  .tag.green { color:var(--accent2); } .tag.red { color:var(--accent3); }
+  .tag.purple { color:var(--accent4); } .tag.orange { color:var(--accent5); }
+  code, pre { font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; font-size:.88rem; }
+  code { background:var(--code); padding:.15rem .35rem; border-radius:4px; color:#e6edf3; }
+  pre { background:var(--code); padding:1rem; border-radius:8px; overflow-x:auto; border:1px solid var(--border); }
+  .flow { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; margin:1rem 0; }
+  .flow .node { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:.6rem .9rem; font-size:.9rem; }
+  .flow .arrow { color:var(--muted); font-size:1.2rem; }
+  table { width:100%; border-collapse:collapse; margin:1rem 0; font-size:.92rem; }
+  th, td { border:1px solid var(--border); padding:.6rem .8rem; text-align:left; }
+  th { background:#1c2128; color:var(--accent); font-weight:600; }
+  tr:nth-child(even) { background:#11161d; }
+  ul { padding-left:1.3rem; } li { margin:.35rem 0; }
+  .formula { background:#11161d; border-left:3px solid var(--accent); padding:.8rem 1rem; margin:.8rem 0;
+    border-radius:0 6px 6px 0; font-family:monospace; color:#e6edf3; }
+  .warn { color:var(--accent3); } .tip { color:var(--accent4); } .highlight { color:var(--accent2); font-weight:600; }
+  .badge { display:inline-block; padding:.1rem .4rem; border-radius:4px; font-size:.75rem; font-weight:600; }
+  .badge.rec { background:rgba(59,185,80,.15); color:var(--accent2); }
+  .badge.alt { background:rgba(210,168,255,.15); color:var(--accent4); }
+  footer { text-align:center; padding:2rem 1rem; color:var(--muted); font-size:.85rem; border-top:1px solid var(--border); margin-top:2rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>MemRouter 查询指令生成方案设计</h1>
+  <div class="subtitle">从"路由到哪个后端"升级为"生成后端查询指令"</div>
+</header>
+
+<main>
+
+<section class="card">
+  <h2>一、问题陈述</h2>
+  <p>当前 MemRouter 只输出 <code>backend_id</code>（如 <code>openviking_memory_backend</code>），后端内部的具体检索参数（<code>target_uri</code>、<code>context_type</code>、<code>level</code>、<code>search_mode</code>）<strong>完全没有明确</strong>。</p>
+  <p>这导致即使 MemRouter 已识别出意图（如 <code>matched_template_id = "openviking.personal_fact_lookup.en.v2"</code>），OpenViking 仍需要重新走 <code>IntentAnalyzer</code>（消耗 <strong>~3K-15K VLM tokens</strong>），才能生成具体的检索参数。</p>
+  <div class="formula">
+    目标：让 MemRouter 在零 LLM token 成本的前提下，为每个后端生成可直接执行的查询指令
+  </div>
+</section>
+
+<h2>二、核心洞察：模板语义蕴含查询规格</h2>
+<div class="card">
+  <p>当前模板 YAML 已经包含大量语义信息，只是没有被充分利用来生成查询指令：</p>
+  <table>
+    <tr>
+      <th>模板字段</th>
+      <th>蕴含的查询信息</th>
+    </tr>
+    <tr>
+      <td><code>intent_family.name</code></td>
+      <td><code>"personal_fact_lookup"</code> → 个人事实查询 → <code>context_type=memory</code></td>
+    </tr>
+    <tr>
+      <td><code>target.primary_backend_id</code></td>
+      <td>目标后端决定了查询参数格式（OpenViking vs Graph vs Temporal）</td>
+    </tr>
+    <tr>
+      <td><code>query_prototypes</code></td>
+      <td>原型 query 风格暗示了搜索模式（find vs search vs graph traversal）</td>
+    </tr>
+  </table>
+  <p><span class="highlight">关键发现</span>：模板不仅是"路由锚点"，更是"查询规格锚点"。我们只需要在模板中显式声明查询规格，就能让 MemRouter 直接输出后端可执行的查询指令。</p>
+</div>
+
+<h2>三、方案设计</h2>
+
+<div class="card">
+  <h3><span class="badge rec">推荐</span> 方案一：模板内嵌查询规格（Template Query Spec）</h3>
+  <p>在现有 YAML 模板中增加 <code>query_spec</code> 字段，声明命中该模板时应生成的查询指令参数。</p>
+
+  <h4>3.1.1 扩展后的模板结构</h4>
+  <pre># openviking.personal_fact_lookup.en.v2.yaml
+schema_version: "mem-router.backend-route-template.v1.1"
+template_id: "openviking.personal_fact_lookup.en.v2"
+version: "2.1"
+status: "enabled"
+
+target:
+  primary_backend_id: "openviking_memory_backend"
+  secondary_backend_ids: []
+
+intent_family:
+  name: "personal_fact_lookup"
+  description: "Query about personal facts the user has shared before"
+
+# ========== 新增：查询规格 ==========
+query_spec:
+  # 通用字段（所有后端）
+  search_mode: "find"                    # find = 无 session intent analysis
+  query_rewrite: "用户 {entities} 相关个人事实"
+
+  # OpenViking 特定字段
+  openviking:
+    context_type: "memory"
+    target_uri: "viking://memories"
+    level: [2]                            # 只检索 L2 内容
+    filter:
+      category: "personal_fact"
+    # 是否跳过 IntentAnalyzer（节省 VLM tokens）
+    skip_intent_analysis: true
+    # 如果模板匹配高置信，直接用模板生成的 TypedQuery
+    typed_query_template:
+      query: "{raw_user_query}"
+      context_type: "memory"
+      intent: "personal_fact_lookup"
+      priority: 1
+
+  # Graph 特定字段（当 secondary_backend 包含 graph 时）
+  graph:
+    graph_query_type: "entity_lookup"
+    hop_depth: 1
+
+  # Temporal 特定字段
+  temporal:
+    temporal_query_type: "timeline_fact"
+    time_granularity: "day"
+# ====================================
+
+query_prototypes:
+  - "你还记得我喜欢什么颜色吗"
+  - "我之前提到过我的生日是什么时候"
+  - "我说过我最讨厌的食物是什么"
+
+hard_negatives:
+  - query: "Python 的列表推导式怎么用"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "看起来像技术问题"
+
+thresholds:
+  accept: 0.75
+  fallback: 0.35
+  margin: 0.15
+  hard_negative_margin: 0.10
+  hard_negative_penalty: 0.50</pre>
+
+  <h4>3.1.2 新增核心数据结构</h4>
+  <pre># echomem/query_spec.py
+from pydantic import BaseModel
+from typing import Any, Dict, List, Optional
+
+class TypedQueryTemplate(BaseModel):
+    """类似于 OpenViking 的 TypedQuery，用于直接生成检索请求。"""
+    query: str
+    context_type: str            # "memory" | "resource" | "skill"
+    intent: str
+    priority: int = 1
+    target_directories: Optional[List[str]] = None
+
+class OpenVikingQuerySpec(BaseModel):
+    """OpenViking 后端特定查询规格。"""
+    context_type: str
+    target_uri: str
+    level: Optional[List[int]] = None
+    filter: Optional[Dict[str, Any]] = None
+    skip_intent_analysis: bool = False
+    typed_query_template: Optional[TypedQueryTemplate] = None
+
+class GraphQuerySpec(BaseModel):
+    """Graph 后端特定查询规格。"""
+    graph_query_type: str        # "entity_relation" | "causal_multihop" | "system_dependency"
+    hop_depth: int = 1
+    root_entity_hint: Optional[str] = None
+    traversal_direction: str = "both"   # "out" | "in" | "both"
+
+class TemporalQuerySpec(BaseModel):
+    """Temporal 后端特定查询规格。"""
+    temporal_query_type: str     # "timeline_fact" | "duration_comparison" | "sequence_reasoning"
+    time_granularity: str = "day"
+    time_range_hint: Optional[str] = None
+
+class TemplateQuerySpec(BaseModel):
+    """模板级查询规格，命中模板时直接产出。"""
+    search_mode: str = "find"    # "find" | "search" | "read" | "graph_traversal" | "temporal_query"
+    query_rewrite: Optional[str] = None   # 支持变量插值
+
+    # 后端特定规格
+    openviking: Optional[OpenVikingQuerySpec] = None
+    graph: Optional[GraphQuerySpec] = None
+    temporal: Optional[TemporalQuerySpec] = None</pre>
+
+  <h4>3.1.3 扩展后的路由结果</h4>
+  <pre># MemBackendRouteResult 新增 query_instructions 字段
+class MemBackendRouteResult(BaseModel):
+    schema_version: "mem-router.backend-route-result.v2"
+    raw_user_query: str
+    normalized_user_query: str
+    route_method: str
+    routes: List[RouteEntry]
+
+    # ========== 新增 ==========
+    query_instructions: List[BackendQueryInstruction] = []
+    # ==========================
+
+    fallback: FallbackInfo = Field(default_factory=FallbackInfo)
+    debug: DebugInfo = Field(default_factory=DebugInfo)
+
+class BackendQueryInstruction(BaseModel):
+    """标准化的后端查询指令，后端可直接执行。"""
+    backend_id: str
+    query: str                        # 重写后的查询文本（支持变量插值）
+    search_mode: str                  # "find" | "search" | "graph_traversal" | "temporal_query"
+    target_uri: Optional[str] = None
+    context_type: Optional[str] = None
+    level: Optional[List[int]] = None
+    filter: Optional[Dict[str, Any]] = None
+    priority: int = 1
+    # 后端特定参数透传
+    extra_params: Dict[str, Any] = Field(default_factory=dict)
+    # 是否跳过后端内部 intent analysis
+    skip_intent_analysis: bool = False</pre>
+</div>
+
+<div class="card">
+  <h3><span class="badge alt">备选</span> 方案二：Adapter 内建映射表（Adapter Query Mapping）</h3>
+  <p>不在模板中增加字段，而是在每个 Adapter 内部维护一个 <code>intent_family → 查询参数</code> 的映射表。</p>
+
+  <pre># echomem/adapters/openviking.py
+class OpenVikingAdapter(MemoryBackendAdapter):
+    # intent_family → OpenViking 查询参数映射
+    _INTENT_QUERY_MAP: Dict[str, Dict[str, Any]] = {
+        "personal_fact_lookup": {
+            "context_type": "memory",
+            "target_uri": "viking://memories",
+            "level": [2],
+            "search_mode": "find",
+            "skip_intent_analysis": True,
+        },
+        "preference_profile": {
+            "context_type": "memory",
+            "target_uri": "viking://memories/preferences",
+            "level": [0, 1, 2],
+            "search_mode": "find",
+            "skip_intent_analysis": True,
+        },
+        "aggregation_summary": {
+            "context_type": "memory",
+            "target_uri": "viking://memories",
+            "level": [0, 1],
+            "search_mode": "search",   # 需要 session 上下文做聚合
+            "skip_intent_analysis": False,
+        },
+        "previous_chat_recall": {
+            "context_type": "memory",
+            "target_uri": "viking://memories/sessions",
+            "level": [2],
+            "search_mode": "search",   # 需要 session 上下文
+            "skip_intent_analysis": False,
+        },
+    }
+
+    def generate_query_instruction(self, route_result: MemBackendRouteResult) -> BackendQueryInstruction:
+        route = self._resolve_route(route_result)
+        intent_family = self._extract_intent_family(route.matched_template_id)
+
+        spec = self._INTENT_QUERY_MAP.get(intent_family)
+        if not spec:
+            # 未知 intent：回退到 search 模式，不跳过 intent analysis
+            return BackendQueryInstruction(
+                backend_id=self.BACKEND_ID,
+                query=route_result.raw_user_query,
+                search_mode="search",
+                skip_intent_analysis=False,
+            )
+
+        return BackendQueryInstruction(
+            backend_id=self.BACKEND_ID,
+            query=route_result.raw_user_query,
+            **spec,
+        )</pre>
+
+  <p><strong>优点</strong>：模板 YAML 无需修改，向后兼容。</p>
+  <p><strong>缺点</strong>：映射表与模板解耦，新增模板时需要同步修改 adapter 代码；无法支持模板级别的个性化参数。</p>
+</div>
+
+<div class="card">
+  <h3><span class="badge rec">推荐混合</span> 方案三：模板主导 + Adapter 补全（Template-First Hybrid）</h3>
+  <p>结合方案一和方案二的优点：</p>
+  <ul>
+    <li>模板 YAML 提供 <strong>query_spec 基础规格</strong>（高置信时的默认参数）</li>
+    <li>Adapter 提供 <strong>运行时补全逻辑</strong>（根据 query_hints 动态调整参数）</li>
+    <li>如果模板未提供 query_spec，回退到 adapter 映射表</li>
+  </ul>
+
+  <pre># 决策流程
+def generate_query_instruction(route_result, adapter):
+    template = resolve_template(route_result.matched_template_id)
+
+    # Step 1: 从模板获取基础规格
+    if template and template.query_spec:
+        base_spec = template.query_spec
+    else:
+        base_spec = adapter.get_default_spec(template.intent_family.name)
+
+    # Step 2: Adapter 运行时补全（根据 query_hints）
+    final_spec = adapter.enrich_spec(
+        base_spec=base_spec,
+        hints=route_result.routes[0].query_hints,
+        raw_query=route_result.raw_user_query,
+    )
+
+    return BackendQueryInstruction(**final_spec)</pre>
+
+  <p>这是<strong>最灵活的方案</strong>，既保持了模板的声明式配置能力，又保留了 adapter 的运行时智能。</p>
+</div>
+
+<h2>四、与 OpenViking 的深度集成：跳过 IntentAnalyzer</h2>
+<div class="card">
+  <h3>4.1 当前 OpenViking 的检索入口</h3>
+  <pre># OpenViking 当前流程
+client.search(query, session=session)
+  → VikingFS.search(query, session_info=...)
+    → if session_summary or current_messages:
+        → IntentAnalyzer.analyze()  ← VLM 调用 (~3K-15K tokens)
+        → 生成 QueryPlan (TypedQueries)
+      else:
+        → 直接构造 TypedQuery
+    → HierarchicalRetriever.retrieve(TypedQuery)</pre>
+
+  <h3>4.2 集成后的新流程</h3>
+  <pre># MemRouter + OpenViking 集成流程
+client.route(query)
+  → MemRouter Pipeline
+    → TemplateMatcher.match()  ← 本地 embedding，零 token
+    → RouteDecision.decide()
+    → 生成 BackendQueryInstruction:
+        {
+          "backend_id": "openviking_memory_backend",
+          "query": "你还记得我喜欢什么颜色吗",
+          "search_mode": "find",
+          "context_type": "memory",
+          "target_uri": "viking://memories",
+          "level": [2],
+          "skip_intent_analysis": true,
+          "typed_query": {
+            "query": "你还记得我喜欢什么颜色吗",
+            "context_type": "memory",
+            "intent": "personal_fact_lookup",
+            "priority": 1
+          }
+        }
+
+# OpenViking 侧新增：接收预构造的 TypedQuery
+client.execute_instruction(instruction)
+  → if instruction.skip_intent_analysis and instruction.typed_query:
+      → 跳过 IntentAnalyzer
+      → 直接用 instruction.typed_query 构造 HierarchicalRetriever
+    → HierarchicalRetriever.retrieve(instruction.typed_query)
+      → 无需 VLM，直接进入向量检索</pre>
+
+  <h3>4.3 Token 成本对比</h3>
+  <table>
+    <tr>
+      <th>场景</th>
+      <th>当前流程</th>
+      <th>集成后流程</th>
+      <th>节省</th>
+    </tr>
+    <tr>
+      <td>个人事实查询（高置信模板命中）</td>
+      <td>MemRouter 本地匹配 + OpenViking VLM intent analysis (~3K-15K tokens)</td>
+      <td>MemRouter 本地匹配 + 直接向量检索（<strong>零 VLM tokens</strong>）</td>
+      <td><span class="highlight">~3K-15K tokens</span></td>
+    </tr>
+    <tr>
+      <td>聚合摘要查询（需要 session 上下文）</td>
+      <td>VLM intent analysis</td>
+      <td><code>skip_intent_analysis=false</code>，仍走 VLM</td>
+      <td>0（设计如此）</td>
+    </tr>
+    <tr>
+      <td>LLM fallback 场景</td>
+      <td>MemRouter LLM fallback + OpenViking VLM</td>
+      <td>MemRouter LLM fallback 直接生成完整指令</td>
+      <td>节省 OpenViking 侧 VLM</td>
+    </tr>
+  </table>
+
+  <p><span class="tip">关键设计</span>：<code>skip_intent_analysis</code> 是一个<strong>策略开关</strong>，不是强制跳过。模板设计者可以根据意图类型决定是否需要 session 上下文：</p>
+  <ul>
+    <li><code>personal_fact_lookup</code> → <code>skip_intent_analysis=true</code>（个人事实不依赖 session 上下文）</li>
+    <li><code>previous_chat_recall</code> → <code>skip_intent_analysis=false</code>（需要 session 历史）</li>
+    <li><code>aggregation_summary</code> → <code>skip_intent_analysis=false</code>（需要 session 上下文做聚合）</li>
+  </ul>
+</div>
+
+<h2>五、查询指令生成完整流程</h2>
+<div class="card">
+  <div class="flow">
+    <div class="node"><strong>User Query</strong><br><small>"你还记得我喜欢什么颜色吗"</small></div>
+    <span class="arrow">→</span>
+    <div class="node"><strong>TemplateMatcher</strong><br><small>命中 <code>openviking.personal_fact_lookup</code><br>score=0.81</small></div>
+    <span class="arrow">→</span>
+    <div class="node"><strong>RouteDecision</strong><br><small>单后端接受<br>OpenViking primary</small></div>
+    <span class="arrow">→</span>
+    <div class="node"><strong>QueryInstructionBuilder</strong><br><small>读取模板 query_spec<br>变量插值</small></div>
+    <span class="arrow">→</span>
+    <div class="node"><strong>Adapter.enrich()</strong><br><small>运行时补全 hints</small></div>
+    <span class="arrow">→</span>
+    <div class="node"><strong>BackendQueryInstruction</strong></div>
+  </div>
+
+  <h4>输出示例</h4>
+  <pre>{
+  "route_method": "template_embedding",
+  "routes": [
+    {
+      "backend_id": "openviking_memory_backend",
+      "role": "primary",
+      "confidence": 0.81,
+      "matched_template_id": "openviking.personal_fact_lookup.en.v2"
+    }
+  ],
+  "query_instructions": [
+    {
+      "backend_id": "openviking_memory_backend",
+      "query": "你还记得我喜欢什么颜色吗",
+      "search_mode": "find",
+      "context_type": "memory",
+      "target_uri": "viking://memories",
+      "level": [2],
+      "priority": 1,
+      "skip_intent_analysis": true,
+      "extra_params": {
+        "filter": {"category": "personal_fact"}
+      }
+    }
+  ],
+  "fallback": {"used": false}
+}</pre>
+</div>
+
+<h2>六、向后兼容性</h2>
+<div class="card">
+  <table>
+    <tr>
+      <th>维度</th>
+      <th>兼容性策略</th>
+    </tr>
+    <tr>
+      <td>模板 YAML</td>
+      <td><code>query_spec</code> 为可选字段；旧模板无该字段时，adapter 回退到映射表</td>
+    </tr>
+    <tr>
+      <td>Result Schema</td>
+      <td><code>query_instructions</code> 为可选字段；旧 consumer 忽略即可</td>
+    </tr>
+    <tr>
+      <td>OpenViking 集成</td>
+      <td>OpenViking 新增 <code>execute_instruction()</code> API，原 <code>search()/find()</code> 不变</td>
+    </tr>
+    <tr>
+      <td>Adapter 接口</td>
+      <td><code>MemoryBackendAdapter</code> 新增 <code>generate_query_instruction()</code> 抽象方法，旧 adapter 可渐进实现</td>
+    </tr>
+  </table>
+</div>
+
+<h2>七、实施路径</h2>
+<div class="card">
+  <h3>Phase 1：基础设施（1-2 天）</h3>
+  <ul>
+    <li>新增 <code>echomem/query_spec.py</code>：定义 <code>TemplateQuerySpec</code>、<code>BackendQueryInstruction</code> 等 Pydantic 模型</li>
+    <li>扩展 <code>MemoryBackendRouteTemplate</code> 支持可选的 <code>query_spec</code> 字段</li>
+    <li>扩展 <code>MemBackendRouteResult</code> 支持 <code>query_instructions</code></li>
+    <li>扩展 <code>MemoryBackendAdapter</code> 接口：新增 <code>generate_query_instruction()</code></li>
+  </ul>
+
+  <h3>Phase 2：OpenViking Adapter（2-3 天）</h3>
+  <ul>
+    <li>实现 <code>OpenVikingAdapter.generate_query_instruction()</code></li>
+    <li>建立 <code>intent_family → OpenViking 参数</code> 映射表（作为 fallback）</li>
+    <li>为 4 个 OpenViking 模板编写 <code>query_spec</code></li>
+    <li>单元测试：验证指令生成正确性</li>
+  </ul>
+
+  <h3>Phase 3：OpenViking SDK 集成（3-5 天）</h3>
+  <ul>
+    <li>OpenViking SDK 新增 <code>execute_instruction(instruction: BackendQueryInstruction)</code> API</li>
+    <li>实现 <code>skip_intent_analysis</code> 分支：直接构造 <code>TypedQuery</code> 进入 <code>HierarchicalRetriever</code></li>
+    <li>端到端测试：MemRouter → OpenViking 零 VLM token 路径</li>
+  </ul>
+
+  <h3>Phase 4：评测与调优（2-3 天）</h3>
+  <ul>
+    <li>扩展 <code>eval_memrouter.py</code>：评测 query instruction 准确率</li>
+    <li>对比实验：有/无 query instruction 的 OpenViking 检索效果</li>
+    <li>Token 成本核算：实际节省了多少 VLM tokens</li>
+  </ul>
+</div>
+
+<h2>八、收益总结</h2>
+<div class="card">
+  <table>
+    <tr>
+      <th>收益项</th>
+      <th>说明</th>
+    </tr>
+    <tr>
+      <td><span class="highlight">Token 成本降低</span></td>
+      <td>高置信个人记忆类 query 可完全跳过 OpenViking IntentAnalyzer，节省 <strong>~3K-15K VLM tokens/次</strong></td>
+    </tr>
+    <tr>
+      <td><span class="highlight">延迟降低</span></td>
+      <td>跳过 VLM 调用，直接进入向量检索，延迟从<strong>数百毫秒降至数十毫秒</strong></td>
+    </tr>
+    <tr>
+      <td><span class="highlight">端到端可控</span></td>
+      <td>MemRouter 生成完整查询指令，后端不再需要自行推断，链路可追踪</td>
+    </tr>
+    <tr>
+      <td><span class="highlight">向后兼容</span></td>
+      <td>所有新增字段为可选，不影响现有代码路径</td>
+    </tr>
+    <tr>
+      <td><span class="highlight">可扩展性</span></td>
+      <td>新增记忆后端时，只需注册 backend + 编写模板 query_spec + 实现 adapter</td>
+    </tr>
+  </table>
+</div>
+
+<h2>九、风险与缓解</h2>
+<div class="card">
+  <table>
+    <tr>
+      <th>风险</th>
+      <th>缓解措施</th>
+    </tr>
+    <tr>
+      <td>模板 query_spec 与后端实际能力不匹配</td>
+      <td><code>skip_intent_analysis</code> 为策略开关，默认 false；只有高置信场景才启用</td>
+    </tr>
+    <tr>
+      <td>变量插值（如 <code>{entities}</code>）为空导致 query 质量下降</td>
+      <td>插值失败时回退到 <code>raw_user_query</code>，不报错</td>
+    </tr>
+    <tr>
+      <td>意图族映射表维护成本</td>
+      <td>模板 YAML 自包含 query_spec，不依赖外部映射表；adapter 映射表仅作 fallback</td>
+    </tr>
+  </table>
+</div>
+
+</main>
+
+<footer>
+  Generated from EchoMem MemRouter design proposal · May 2026
+</footer>
+</body>
+</html>

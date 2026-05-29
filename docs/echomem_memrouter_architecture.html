@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EchoMem MemRouter v1.4 架构详解</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --fg: #c9d1d9;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --accent2: #3fb950;
+    --accent3: #f85149;
+    --accent4: #d2a8ff;
+    --accent5: #ffa657;
+    --border: #30363d;
+    --card: #161b22;
+    --code: #1f2937;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
+    line-height: 1.7;
+  }
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 2rem 1.5rem 1.5rem;
+    text-align: center;
+  }
+  h1 { margin: 0 0 .5rem; font-size: 1.8rem; color: #f0f6fc; }
+  .subtitle { color: var(--muted); font-size: .95rem; }
+  main { max-width: 980px; margin: 0 auto; padding: 1.5rem; }
+  h2 { color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: .4rem; margin-top: 2rem; font-size: 1.3rem; }
+  h3 { color: var(--accent4); margin-top: 1.6rem; font-size: 1.05rem; }
+  h4 { color: var(--accent5); margin-top: 1.2rem; font-size: 1rem; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.2rem;
+    margin: 1rem 0;
+  }
+  .tag {
+    display: inline-block;
+    padding: .15rem .5rem;
+    border-radius: 999px;
+    font-size: .78rem;
+    font-weight: 600;
+    margin-right: .35rem;
+    margin-bottom: .35rem;
+    background: #21262d;
+    color: var(--accent);
+    border: 1px solid var(--border);
+  }
+  .tag.green { color: var(--accent2); }
+  .tag.red { color: var(--accent3); }
+  .tag.purple { color: var(--accent4); }
+  .tag.orange { color: var(--accent5); }
+  code, pre {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: .88rem;
+  }
+  code {
+    background: var(--code);
+    padding: .15rem .35rem;
+    border-radius: 4px;
+    color: #e6edf3;
+  }
+  pre {
+    background: var(--code);
+    padding: 1rem;
+    border-radius: 8px;
+    overflow-x: auto;
+    border: 1px solid var(--border);
+  }
+  .flow {
+    display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin: 1rem 0;
+  }
+  .flow .node {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .6rem .9rem;
+    font-size: .9rem;
+  }
+  .flow .arrow { color: var(--muted); font-size: 1.2rem; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .92rem; }
+  th, td { border: 1px solid var(--border); padding: .6rem .8rem; text-align: left; }
+  th { background: #1c2128; color: var(--accent); font-weight: 600; }
+  tr:nth-child(even) { background: #11161d; }
+  ul { padding-left: 1.3rem; }
+  li { margin: .35rem 0; }
+  .formula {
+    background: #11161d;
+    border-left: 3px solid var(--accent);
+    padding: .8rem 1rem;
+    margin: .8rem 0;
+    border-radius: 0 6px 6px 0;
+    font-family: monospace;
+    color: #e6edf3;
+  }
+  .highlight { color: var(--accent2); font-weight: 600; }
+  .warn { color: var(--accent3); }
+  .tip { color: var(--accent4); }
+  footer { text-align: center; padding: 2rem 1rem; color: var(--muted); font-size: .85rem; border-top: 1px solid var(--border); margin-top: 2rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>EchoMem MemRouter v1.4 架构详解</h1>
+  <div class="subtitle">面向 AI Agent 记忆检索场景的轻量级记忆后端路由器</div>
+</header>
+
+<main>
+
+<section class="card">
+  <h2>一、项目概述</h2>
+  <p>EchoMem MemRouter 是一个面向 AI Agent 记忆检索场景的<strong>轻量级记忆后端路由器</strong>。它只回答一个收敛的问题：</p>
+  <div class="formula">
+    <strong>给定一条用户 query，应该把记忆检索请求路由到哪个记忆后端？</strong>
+  </div>
+  <p>MemRouter <strong>不决定</strong>后端内部的记忆类型、URI 路径、检索模式或 retrieval capability。这些决策由被选中的记忆后端或对应 adapter 自行完成。</p>
+  <p>当前 v1.4 范围：</p>
+  <ul>
+    <li>在 <span class="highlight">OpenViking、Graph、Temporal</span> 三类逻辑后端之间进行路由</li>
+    <li>主路径优先使用低成本的<strong>模板多原型 embedding 匹配</strong></li>
+    <li>当模板匹配低置信或处于灰区时，可启用 <strong>LLM 后备路由</strong></li>
+    <li>输出标准化的后端路由结果，并保留评测所需的 debug 元数据</li>
+    <li><strong>不执行真实记忆检索</strong>，真实检索由后续 backend adapter 承接</li>
+  </ul>
+</section>
+
+<h2>二、设计目标</h2>
+<div class="card">
+  <table>
+    <tr>
+      <th>设计目标</th>
+      <th>说明</th>
+    </tr>
+    <tr>
+      <td><strong>只做后端路由</strong></td>
+      <td>MemRouter 输出目标后端，不输出后端内部检索策略</td>
+    </tr>
+    <tr>
+      <td><strong>低成本优先</strong></td>
+      <td>模板多原型 embedding 匹配是主路径，LLM 只作为兜底</td>
+    </tr>
+    <tr>
+      <td><strong>后端可扩展</strong></td>
+      <td>新增记忆后端时注册 backend 和模板即可，不需要改 matcher 主算法</td>
+    </tr>
+    <tr>
+      <td><strong>评测可观测</strong></td>
+      <td>每轮评测记录模板命中率、LLM fallback 率、后端准确率、延迟和模板分数</td>
+    </tr>
+    <tr>
+      <td><strong>Adapter 隔离</strong></td>
+      <td>backend adapter 负责把 route result 翻译成后端自己的检索请求</td>
+    </tr>
+  </table>
+</div>
+
+<h2>三、总体链路</h2>
+<div class="card">
+  <div class="flow">
+    <div class="node">User Query</div>
+    <span class="arrow">→</span>
+    <div class="node"><strong>QueryNormalizer</strong></div>
+    <span class="arrow">→</span>
+    <div class="node"><strong>QueryFeatureBuilder</strong></div>
+    <span class="arrow">→</span>
+    <div class="node"><strong>TemplateMatcher</strong></div>
+    <span class="arrow">→</span>
+    <div class="node"><strong>RouteDecision</strong></div>
+    <span class="arrow">→</span>
+    <div class="node"><strong>MemBackendRouteResult</strong></div>
+    <span class="arrow">→</span>
+    <div class="node">Backend Adapter</div>
+  </div>
+
+  <h3>三条决策分支</h3>
+  <div class="flow">
+    <div class="node" style="border-color:var(--accent2)"><span class="highlight">Branch 1</span><br>高置信单后端<br><code>template_embedding</code></div>
+    <span class="arrow">|</span>
+    <div class="node" style="border-color:var(--accent5)"><span style="color:var(--accent5)">Branch 2</span><br>高置信多后端<br><code>template_embedding_multi_backend</code></div>
+    <span class="arrow">|</span>
+    <div class="node" style="border-color:var(--accent3)"><span class="warn">Branch 3</span><br>低置信或灰区<br><code>llm_backend_fallback</code></div>
+  </div>
+</div>
+
+<h2>四、Pipeline 各阶段详解</h2>
+
+<div class="card">
+  <h3>4.1 MemRouterPipeline — 主入口</h3>
+  <p>核心类 <code>MemRouterPipeline</code>（<code>pipeline.py</code>）提供单一入口 <code>route(query)</code>，串联所有阶段。工厂方法 <code>with_defaults()</code> 自动装配 v1.4 默认配置：</p>
+  <pre>pipeline = MemRouterPipeline.with_defaults(embedder)
+result = pipeline.route("你记得我之前说过什么吗？")</pre>
+
+  <h4>默认注册的 3 个逻辑后端</h4>
+  <table>
+    <tr>
+      <th>backend_id</th>
+      <th>backend_kind</th>
+      <th>路由范围</th>
+      <th>QueryContract</th>
+    </tr>
+    <tr>
+      <td><code>openviking_memory_backend</code></td>
+      <td><code>openviking_native</code></td>
+      <td>个人语义记忆、profile、preferences、历史对话回忆、宽泛用户上下文</td>
+      <td>支持 entities, time_range</td>
+    </tr>
+    <tr>
+      <td><code>graph_memory_backend</code></td>
+      <td><code>knowledge_graph</code></td>
+      <td>实体关系、关系遍历、多跳图问题、系统依赖关系</td>
+      <td>支持 entities, relation_hints</td>
+    </tr>
+    <tr>
+      <td><code>temporal_memory_backend</code></td>
+      <td><code>temporal_store</code></td>
+      <td>时间线事实、持续时间比较、顺序推理、时间范围问题</td>
+      <td>支持 entities, time_range</td>
+    </tr>
+  </table>
+</div>
+
+<div class="card">
+  <h3>4.2 Stage 1: QueryNormalizer — 查询归一化</h3>
+  <p>轻量级文本归一化，<strong>不做分类、不做后端决策</strong>，仅标准化文本：</p>
+  <pre>1. Strip 首尾空白
+2. 标点符号替换为单个空格（CJK + ASCII）
+3. 合并连续空白
+4. 英文转小写（CJK 安全保留）</pre>
+  <p>代码：<code>echomem/normalizer.py</code></p>
+</div>
+
+<div class="card">
+  <h3>4.3 Stage 2: QueryFeatureBuilder — 特征提取</h3>
+  <p>提取轻量级特征，<strong>不做意图分类</strong>，仅产出 embedding 和弱提示：</p>
+
+  <h4>输出特征 (QueryFeatures)</h4>
+  <table>
+    <tr>
+      <th>字段</th>
+      <th>类型</th>
+      <th>提取方式</th>
+    </tr>
+    <tr>
+      <td><code>normalized_query</code></td>
+      <td>str</td>
+      <td>经过 QueryNormalizer 处理后的文本</td>
+    </tr>
+    <tr>
+      <td><code>query_embedding</code></td>
+      <td>np.ndarray</td>
+      <td>通过 EmbeddingProvider 编码（带缓存）</td>
+    </tr>
+    <tr>
+      <td><code>entities</code></td>
+      <td>List[str]</td>
+      <td>正则匹配：英文人名、文件名（.py/.js 等）</td>
+    </tr>
+    <tr>
+      <td><code>temporal_hints</code></td>
+      <td>List[str]</td>
+      <td>正则匹配："上次"、"昨天"、"last week" 等时间表达</td>
+    </tr>
+    <tr>
+      <td><code>relation_hints</code></td>
+      <td>List[str]</td>
+      <td>正则匹配："关系"、"friend"、"relationship" 等</td>
+    </tr>
+  </table>
+  <p>代码：<code>echomem/features.py</code></p>
+</div>
+
+<div class="card">
+  <h3>4.4 Stage 3: BackendRouteTemplateIndex — 模板索引</h3>
+  <p>从 YAML 文件加载模板，提供启用的模板列表。模板是后端路由的<strong>核心语义锚点</strong>。</p>
+
+  <h4>模板数据结构 (MemoryBackendRouteTemplate)</h4>
+  <pre>schema_version: "mem-router.backend-route-template.v1"
+template_id: "openviking.personal_fact_lookup.en.v2"
+version: "2.0"
+status: "enabled"
+
+target:
+  primary_backend_id: "openviking_memory_backend"
+  secondary_backend_ids: []
+
+intent_family:
+  name: "personal_fact_lookup"
+  description: "Query about personal facts the user has shared before"
+
+semantic_card: "..."
+
+query_prototypes:          # 正向原型查询（多条）
+  - "你还记得我喜欢什么颜色吗"
+  - "我之前提到过我的生日是什么时候"
+  - ...
+
+hard_negatives:            # 难负例
+  - query: "Python 的列表推导式怎么用"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "看起来像技术问题，实则是记忆查询"
+
+thresholds:
+  accept: 0.75              # 接受阈值
+  fallback: 0.35            # fallback 阈值
+  margin: 0.15              # top1/top2 间隔阈值
+  hard_negative_margin: 0.10
+  hard_negative_penalty: 0.50</pre>
+
+  <h4>当前启用的 10 个模板</h4>
+  <table>
+    <tr>
+      <th>模板文件</th>
+      <th>目标后端</th>
+      <th>意图族</th>
+    </tr>
+    <tr><td><code>openviking.aggregation_summary.v2.yaml</code></td><td>OpenViking</td><td>聚合摘要</td></tr>
+    <tr><td><code>openviking.personal_fact_lookup.en.v2.yaml</code></td><td>OpenViking</td><td>个人事实查询</td></tr>
+    <tr><td><code>openviking.preference_profile.v1.yaml</code></td><td>OpenViking</td><td>偏好画像</td></tr>
+    <tr><td><code>openviking.previous_chat_recall.v1.yaml</code></td><td>OpenViking</td><td>历史对话回忆</td></tr>
+    <tr><td><code>graph.causal_multihop.v1.yaml</code></td><td>Graph</td><td>因果多跳推理</td></tr>
+    <tr><td><code>graph.entity_relation.v1.yaml</code></td><td>Graph</td><td>实体关系</td></tr>
+    <tr><td><code>graph.system_dependency.v1.yaml</code></td><td>Graph</td><td>系统依赖关系</td></tr>
+    <tr><td><code>temporal.duration_comparison.v1.yaml</code></td><td>Temporal</td><td>持续时间比较</td></tr>
+    <tr><td><code>temporal.sequence_reasoning.v1.yaml</code></td><td>Temporal</td><td>顺序推理</td></tr>
+    <tr><td><code>temporal.timeline_fact.v1.yaml</code></td><td>Temporal</td><td>时间线事实</td></tr>
+  </table>
+  <p>代码：<code>echomem/templates.py</code></p>
+</div>
+
+<div class="card">
+  <h3>4.5 Stage 4: TemplateMatcher — 多原型向量匹配</h3>
+  <p>核心打分算法，使用向量相似度将用户 query 与模板原型匹配。</p>
+
+  <h4>正向打分公式</h4>
+  <div class="formula">
+    S_pos = 0.50 × S_max + 0.30 × S_mean@3 + 0.20 × S_centroid
+  </div>
+  <ul>
+    <li><code>S_max</code>：最强单个 prototype 命中分数</li>
+    <li><code>S_mean@3</code>：top 3 prototypes 的平均分，降低单条 prototype 偶然高分的影响</li>
+    <li><code>S_centroid</code>：query 与模板整体语义中心（centroid）的相似度</li>
+  </ul>
+
+  <h4>Hard-Negative 惩罚</h4>
+  <div class="formula">
+    S_final = S_pos - lambda × max(0, delta_neg - M_neg)
+  </div>
+  <ul>
+    <li><code>M_neg</code>：query 与 hard negative 的最大相似度差 = S_pos - S_neg</li>
+    <li><code>delta_neg</code>：硬负例安全间隔阈值（模板配置）</li>
+    <li><code>lambda</code>：惩罚系数（模板配置）</li>
+  </ul>
+
+  <h4>Backend 聚合</h4>
+  <p>模板按分数排序后，聚合到 backend 级别：同一 backend 的多个模板只保留最高分，确保 top1/top2 代表不同后端。</p>
+
+  <h4>Embedding 缓存</h4>
+  <p>模板原型和硬负例的 embedding 在首次使用时计算并缓存（<code>_proto_cache</code> / <code>_neg_cache</code>），避免重复编码。</p>
+  <p>代码：<code>echomem/matcher.py</code></p>
+</div>
+
+<div class="card">
+  <h3>4.6 Stage 5: RouteDecision — 三条分支决策</h3>
+  <p>根据模板匹配分数和阈值，选择三条分支之一。默认后端为 <code>openviking_memory_backend</code>。</p>
+
+  <h4>阈值参数（来自命中的最佳模板）</h4>
+  <table>
+    <tr>
+      <th>阈值</th>
+      <th>作用</th>
+    </tr>
+    <tr>
+      <td><code>accept</code></td>
+      <td>最低接受分数，best.score >= accept 才可能被接受</td>
+    </tr>
+    <tr>
+      <td><code>fallback</code></td>
+      <td>低于此分数直接进入 LLM fallback</td>
+    </tr>
+    <tr>
+      <td><code>margin</code></td>
+      <td>top1 与 top2 的最小间隔，间隔不足视为模糊</td>
+    </tr>
+  </table>
+
+  <h4>Branch 1: 单后端接受 (template_embedding)</h4>
+  <pre>条件: best.score >= accept AND (second is None OR margin >= margin_thr)
+输出: 1 个 primary route</pre>
+
+  <h4>Branch 2: 多后端接受 (template_embedding_multi_backend)</h4>
+  <pre>条件: best.score >= accept
+      AND second.score >= second_accept
+      AND best.backend != second.backend
+      AND margin < margin_thr
+输出: primary + secondary 两个 route
+      + post_retrieval_requirements: {deduplicate_evidence, check_answerability}</pre>
+
+  <h4>Branch 3: LLM Fallback (llm_backend_fallback)</h4>
+  <pre>触发条件:
+  - 无有效 backend 候选
+  - best.score < fallback_thr
+  - 模糊或间隔太小 (margin < margin_thr 且不满足多后端条件)
+
+输出: 通过 LLMBackendRouter 决策，默认置信度 0.60</pre>
+  <p>代码：<code>echomem/decision.py</code></p>
+</div>
+
+<h2>五、LLM 后备路由</h2>
+<div class="card">
+  <h3>5.1 设计原则</h3>
+  <p>LLM fallback 是<strong>可选能力</strong>，适合在 benchmark 评测或模板覆盖仍不足的实验阶段启用。主路径始终是低成本的模板 embedding 匹配。</p>
+
+  <h3>5.2 支持的 Provider</h3>
+  <table>
+    <tr>
+      <th>Provider</th>
+      <th>状态</th>
+    </tr>
+    <tr>
+      <td><code>mock</code></td>
+      <td>默认，用于单元测试，不发起真实请求</td>
+    </tr>
+    <tr>
+      <td><code>openai_compatible</code></td>
+      <td>已实现</td>
+    </tr>
+    <tr>
+      <td><code>anthropic_compatible</code></td>
+      <td>已实现</td>
+    </tr>
+    <tr>
+      <td><code>local_http</code></td>
+      <td>预留接口，尚未实现</td>
+    </tr>
+  </table>
+
+  <h3>5.3 闭集约束</h3>
+  <p>LLM 只能从 <code>MemoryBackendRegistry</code> 中已注册且启用的 <code>backend_id</code> 列表中选择，不能自由发挥。</p>
+
+  <h3>5.4 Fallback 信息记录</h3>
+  <p>结果中 <code>FallbackInfo</code> 记录是否使用了 fallback、类型和原因，便于评测分析。</p>
+  <pre>fallback: {
+  "used": true,
+  "type": "llm_backend_fallback",
+  "reason": "template_score_below_fallback_threshold"
+}</pre>
+  <p>代码：<code>echomem/llm_fallback.py</code></p>
+</div>
+
+<h2>六、Embedding Provider</h2>
+<div class="card">
+  <p>使用 Strategy 模式，支持本地和远程 embedding provider 无缝切换：</p>
+  <table>
+    <tr>
+      <th>Provider</th>
+      <th>类</th>
+      <th>特点</th>
+    </tr>
+    <tr>
+      <td><code>sentence-transformers</code></td>
+      <td><code>SentenceTransformersProvider</code></td>
+      <td>本地运行，默认模型 all-MiniLM-L6-v2，零外部依赖成本</td>
+    </tr>
+    <tr>
+      <td><code>openai_compatible</code></td>
+      <td><code>OpenAICompatibleProvider</code></td>
+      <td>支持 text-embedding-3-small / 3-large / ada-002 等，带模型注册表</td>
+    </tr>
+  </table>
+  <p>代码：<code>echomem/embeddings/base.py</code></p>
+</div>
+
+<h2>七、OpenViking Adapter</h2>
+<div class="card">
+  <p><code>OpenVikingAdapter</code> 是一个很薄的翻译层，遵循 <code>MemoryBackendAdapter</code> 抽象接口：</p>
+
+  <h3>MemRouter 决定的内容</h3>
+  <ul>
+    <li>query 是否应该路由到 OpenViking</li>
+    <li>路由置信度和命中的模板元数据</li>
+    <li>query hints（实体、时间提示、关系提示）</li>
+  </ul>
+
+  <h3>OpenViking 自行决定的内容</h3>
+  <ul>
+    <li>检索哪个内部记忆路径</li>
+    <li>使用 search、read、find、graph 或其他内部机制</li>
+    <li>如何合并、排序、注入检索到的记忆</li>
+  </ul>
+
+  <h3>翻译输出示例</h3>
+  <pre>{
+  "query": "你还记得我喜欢什么颜色吗",
+  "confidence": 0.81,
+  "route_method": "template_embedding",
+  "matched_template_id": "openviking.personal_fact_lookup.en.v2",
+  "query_hints": {
+    "entities": [],
+    "temporal_hints": [],
+    "semantic_hints": []
+  }
+}</pre>
+  <p>代码：<code>echomem/adapters/openviking.py</code></p>
+</div>
+
+<h2>八、评测体系</h2>
+<div class="card">
+  <h3>8.1 评测脚本</h3>
+  <table>
+    <tr>
+      <th>脚本</th>
+      <th>功能</th>
+    </tr>
+    <tr>
+      <td><code>scripts/check_templates.py</code></td>
+      <td>检查模板 YAML 格式和阈值合法性</td>
+    </tr>
+    <tr>
+      <td><code>scripts/eval_memrouter.py</code></td>
+      <td>主评测脚本，支持 smoke / full_route_eval / ci-smoke-mock 模式</td>
+    </tr>
+    <tr>
+      <td><code>scripts/build_memrouter_eval_dataset.py</code></td>
+      <td>构建评测数据集（golden routes + synthetic smoke routes）</td>
+    </tr>
+  </table>
+
+  <h3>8.2 评测数据集</h3>
+  <table>
+    <tr>
+      <th>数据集</th>
+      <th>规模</th>
+      <th>用途</th>
+    </tr>
+    <tr>
+      <td><code>smoke_routes.jsonl</code></td>
+      <td>30 条</td>
+      <td>冒烟测试</td>
+    </tr>
+    <tr>
+      <td><code>golden_mini_routes.jsonl</code></td>
+      <td>60 条</td>
+      <td>小型 golden 评测</td>
+    </tr>
+    <tr>
+      <td><code>golden_mini_balanced_routes.jsonl</code></td>
+      <td>63 条</td>
+      <td>平衡分布评测</td>
+    </tr>
+    <tr>
+      <td><code>synthetic_smoke_routes.jsonl</code></td>
+      <td>11 条</td>
+      <td>合成冒烟数据</td>
+    </tr>
+  </table>
+
+  <h3>8.3 核心指标</h3>
+  <table>
+    <tr>
+      <th>指标</th>
+      <th>说明</th>
+    </tr>
+    <tr>
+      <td><code>primary_backend_accuracy</code></td>
+      <td>主后端路由准确率</td>
+    </tr>
+    <tr>
+      <td><code>final_route_accuracy</code></td>
+      <td>最终路由准确率（含多后端）</td>
+    </tr>
+    <tr>
+      <td><code>template_hit_rate</code></td>
+      <td>模板命中率（不走 LLM fallback 的比例）</td>
+    </tr>
+    <tr>
+      <td><code>llm_fallback_rate</code></td>
+      <td>LLM fallback 触发率</td>
+    </tr>
+    <tr>
+      <td><code>invalid_route_rate</code></td>
+      <td>无效路由率</td>
+    </tr>
+  </table>
+  <p>评测产物写入 <code>runs/</code> 目录，按 benchmark / scenario / expected backend / route method 分组统计。</p>
+</div>
+
+<h2>九、与 OpenViking 的关系</h2>
+<div class="card">
+  <table>
+    <tr>
+      <th>维度</th>
+      <th>EchoMem MemRouter</th>
+      <th>OpenViking</th>
+    </tr>
+    <tr>
+      <td><strong>职责边界</strong></td>
+      <td>决定"哪个后端"</td>
+      <td>决定"后端内如何检索"</td>
+    </tr>
+    <tr>
+      <td><strong>路由粒度</strong></td>
+      <td>backend 级别（openviking / graph / temporal）</td>
+      <td>内部记忆路径级别（L0/L1/L2 + intent analysis）</td>
+    </tr>
+    <tr>
+      <td><strong>主路径成本</strong></td>
+      <td>本地 embedding 匹配（~毫秒级）</td>
+      <td>向量搜索 + 可选 rerank（~百毫秒级）</td>
+    </tr>
+    <tr>
+      <td><strong>LLM 使用</strong></td>
+      <td>fallback 才用（可选）</td>
+      <td>intent analysis + memory extraction（频繁使用）</td>
+    </tr>
+    <tr>
+      <td><strong>交互方式</strong></td>
+      <td>输出 route result，由 adapter 翻译</td>
+      <td>接收 adapter 翻译后的参数执行检索</td>
+    </tr>
+  </table>
+  <p>简言之：<strong>MemRouter 是 OpenViking 的"上游路由器"</strong>。当 Agent 收到用户 query 时，MemRouter 先判断这条 query 是关于个人记忆的（走 OpenViking）、实体关系的（走 Graph）、还是时间线的（走 Temporal），然后把 query 交给选中的后端自行处理。</p>
+</div>
+
+<h2>十、项目结构速查</h2>
+<div class="card">
+  <pre>echomem/
+|-- __init__.py
+|-- registry.py              # MemoryBackendRegistry — 后端注册表
+|-- normalizer.py            # QueryNormalizer — 查询归一化
+|-- features.py              # QueryFeatureBuilder — 特征提取
+|-- templates.py             # MemoryBackendRouteTemplate + BackendRouteTemplateIndex
+|-- matcher.py               # TemplateMatcher — 多原型向量匹配（核心算法）
+|-- decision.py              # RouteDecision — 三条分支决策
+|-- result.py                # MemBackendRouteResult + RouteEntry + QueryHints
+|-- request.py               # MemoryRouteRequest + CallerContext
+|-- pipeline.py              # MemRouterPipeline — 主入口
+|-- llm_fallback.py          # LLMBackendRouter + LLMRouterConfig
+|-- embeddings/
+|   |-- __init__.py
+|   `-- base.py              # EmbeddingProvider + SentenceTransformersProvider + OpenAIProvider
+|-- adapters/
+|   |-- __init__.py
+|   `-- openviking.py        # OpenVikingAdapter
+|-- templates_data/          # 当前启用的 10 个 YAML 模板
+`-- templates_archive/       # 已归档模板
+
+scripts/
+|-- build_memrouter_eval_dataset.py   # 构建评测数据集
+|-- check_templates.py                # 模板合法性检查
+`-- eval_memrouter.py                 # 主评测脚本
+
+data/memrouter_eval/         # 评测数据集
+|-- smoke_routes.jsonl
+|-- golden_mini_routes.jsonl
+|-- golden_mini_balanced_routes.jsonl
+|-- golden_mini_balanced_routes.v2.jsonl
+|-- golden_mini_balanced_routes.v2.1.jsonl
+`-- synthetic_smoke_routes.jsonl
+
+tests/                       # 单元测试（当前基线 61 passed）</pre>
+</div>
+
+<h2>十一、当前限制</h2>
+<div class="card">
+  <ul>
+    <li>Graph 和 Temporal 的真实 adapter 尚未实现（仅 OpenVikingAdapter 存在）</li>
+    <li><code>OpenVikingAdapter</code> 当前只做参数翻译，不调用 OpenViking SDK/API</li>
+    <li><code>local_http</code> LLM provider 已预留接口，但尚未实现</li>
+    <li>模板覆盖仍在调优中，尤其是自然分布下的 OpenViking 个人记忆类 query</li>
+    <li>CJK 实体提取在 v1.4 MVP 中被禁用，避免过度提取常见短语</li>
+  </ul>
+</div>
+
+</main>
+
+<footer>
+  Generated from EchoMem MemRouterTest branch source code analysis · May 2026<br>
+  Repository: <a href="https://github.com/tech-innovation-group/EchoMem" style="color:var(--accent)">github.com/tech-innovation-group/EchoMem</a> (MemRouterTest branch)
+</footer>
+</body>
+</html>

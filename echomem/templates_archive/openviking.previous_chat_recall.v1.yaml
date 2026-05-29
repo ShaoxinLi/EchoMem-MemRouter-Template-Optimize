@@ -1,0 +1,87 @@
+schema_version: "mem-router.backend-route-template.v1"
+template_id: "openviking.previous_chat_recall.v1"
+version: "1.0"
+status: "disabled"
+# NOTE: Merged into openviking.preference_profile.v1 in boundary v4 iteration.
+
+target:
+  primary_backend_id: "openviking_memory_backend"
+  secondary_backend_ids: []
+
+intent_family:
+  name: "previous_chat_recall"
+  description: "User asks about something they said, mentioned, or discussed in a previous conversation with the assistant."
+
+semantic_card: >
+  Use this template when the user refers back to a prior interaction:
+  "I told you before...", "You remember I said...", "As I mentioned last time...",
+  or asks the assistant to act based on prior context. The key signal is
+  meta-reference to the conversation history rather than a direct fact query.
+
+query_prototypes:
+  - "我之前说过我喜欢什么沟通方式吗？"
+  - "你记得我的代码风格偏好吗？"
+  - "我之前告诉过你我的技术背景吗？"
+  - "按我的偏好来处理这个任务"
+  - "我平时希望你怎么给我汇报？"
+  - "你记得我说过我在学什么吗？"
+  - "我上次跟你提过我的项目进展吗？"
+  - "我们之前讨论过我的时间表吗？"
+  - "你还记得我对这个问题的看法吗？"
+  - "我跟你说过我打算怎么做吗？"
+  - "上次聊天时我提到的那个工具叫什么？"
+  - "我之前让你记住什么？"
+  - "你还记得我的配置偏好吗？"
+  - "我提到过我最擅长的领域吗？"
+  - "你记得我之前给你的要求吗？"
+
+hard_negatives:
+  - query: "What items did Calvin buy in March 2023?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Direct fact query, no meta-reference to chat history"
+  - query: "When did Jon visit networking events for his store?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Temporal fact without chat context reference"
+  - query: "Jon 和 Gina 是什么关系？"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Relation query without chat context reference"
+  - query: "What is the total cost of my recently purchased headphones and the iPad?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Aggregation query, not chat recall"
+  - query: "What time management techniques do Deborah and Jolene use?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Preference query about third parties, not self-reported chat context"
+  - query: "How many days before I bought the iPhone 13 Pro did I attend the Holiday Market?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Duration comparison, no chat meta-reference"
+  - query: "What caused split-brain dedupe?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Technical causal query"
+  - query: "Can you suggest some activities that I can do in the evening?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Suggestion request, not recall"
+
+query_spec:
+  search_mode: "search"
+  openviking:
+    context_type: "memory"
+    target_uri: "viking://memories/sessions"
+    level: [2]
+    skip_intent_analysis: false
+    typed_query_template:
+      query: "{raw_user_query}"
+      context_type: "memory"
+      intent: "previous_chat_recall"
+      priority: 1
+
+thresholds:
+  accept: 0.68
+  fallback: 0.58
+  margin: 0.04
+  hard_negative_margin: 0.03
+  hard_negative_penalty: 0.06
+
+calibration:
+  min_positive_examples: 15
+  min_hard_negatives: 8
+  expected_fallback_rate: 0.25

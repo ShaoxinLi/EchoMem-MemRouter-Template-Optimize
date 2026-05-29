@@ -1,0 +1,67 @@
+schema_version: "mem-router.backend-route-template.v1"
+template_id: "openviking.personal_semantic_memory.v1"
+version: "1.0"
+status: "disabled"
+
+target:
+  primary_backend_id: "openviking_memory_backend"
+  secondary_backend_ids: []
+
+intent_family:
+  name: "personal_memory_recall"
+  description: "用户询问自己说过的偏好、背景、普通记忆和未拆到专用后端的长期信息。"
+
+semantic_card: >
+  适合用户个人长期记忆、偏好、profile、普通语义记忆，
+  以及没有明显图结构或时间线特征的问题。
+
+query_prototypes:
+  - "我之前说过我喜欢什么沟通方式吗？"
+  - "你记得我的代码风格偏好吗？"
+  - "我之前告诉过你我的技术背景吗？"
+  - "按我的偏好来处理这个任务"
+  - "我平时希望你怎么给我汇报？"
+  - "What books has Tim read?"
+  - "What schools did John play basketball in and how many years was he with his team during high school?"
+  - "What did Dave discuss with the cool artist he met at the gala?"
+  - "Would Dave prefer working on a Dodge Charger or a Subaru Forester?"
+  - "What is the total cost of my recently purchased headphones and the iPad?"
+  - "Where do I currently keep my old sneakers?"
+  - "What was the amount I was pre-approved for when I got my mortgage from Wells Fargo?"
+  - "What does X support?"
+  - "What hashing is recommended?"
+  - "Which API path starts all calls?"
+  - "Where can activities attach?"
+  - "Can you suggest some activities that I can do in the evening?"
+
+hard_negatives:
+  - query: "Jon 和 Gina 是什么关系？"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "这是实体关系查询"
+  - query: "Jon 什么时候失去工作的？"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "这是时间线事实查询"
+  - query: "When did Jon visit networking events for his store?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Temporal fact, not personal preference"
+  - query: "Which week did Tim visit the UK for the Harry Potter Conference?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Temporal fact, not personal memory"
+  - query: "How many days before I bought the iPhone 13 Pro did I attend the Holiday Market?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Duration comparison, not personal memory"
+  - query: "How many days had passed between the Hindu festival of Holi and the Sunday mass at St. Mary's Church?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Duration comparison, not personal memory"
+
+thresholds:
+  accept: 0.76
+  fallback: 0.64
+  margin: 0.04
+  hard_negative_margin: 0.03
+  hard_negative_penalty: 0.06
+
+calibration:
+  min_positive_examples: 30
+  min_hard_negatives: 20
+  expected_fallback_rate: 0.10

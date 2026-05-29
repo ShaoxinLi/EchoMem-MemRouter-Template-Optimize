@@ -1,0 +1,24 @@
+[project]
+name = "echomem"
+version = "0.1.0"
+description = "EchoMem MemRouter - Lightweight memory backend router for AI agents"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+local = ["sentence-transformers>=3.0"]
+openai = ["openai>=1.0"]
+anthropic = ["anthropic>=0.40"]
+llm = ["openai>=1.0", "anthropic>=0.40"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-data]
+echomem = ["templates_data/*.yaml", "templates_data/*.yml"]

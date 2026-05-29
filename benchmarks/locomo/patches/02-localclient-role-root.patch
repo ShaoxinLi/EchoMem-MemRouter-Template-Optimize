@@ -1,0 +1,13 @@
+diff --git a/openviking/client/local.py b/openviking/client/local.py
+index dbb38164..e273a700 100644
+--- a/openviking/client/local.py
++++ b/openviking/client/local.py
+@@ -67,7 +67,7 @@ class LocalClient(BaseClient):
+             user=UserIdentifier.the_default_user(),
+         )
+         self._user = self._service.user
+-        self._ctx = RequestContext(user=self._user, role=Role.USER)
++        self._ctx = RequestContext(user=self._user, role=Role.ROOT)
+
+     @property
+     def service(self) -> OpenVikingService:

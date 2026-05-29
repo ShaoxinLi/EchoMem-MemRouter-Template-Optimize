@@ -1,0 +1,77 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 1933,
+    "workers": 1,
+    "root_api_key": "ov-test-key-12345",
+    "with_bot": true,
+    "bot_api_url": "http://127.0.0.1:18790"
+  },
+  "storage": {
+    "workspace": "WORKSPACE_DIR_PLACEHOLDER",
+    "vectordb": {
+      "name": "context",
+      "backend": "local",
+      "project": "default",
+      "dimension": 1024,
+      "distance_metric": "cosine"
+    }
+  },
+  "embedding": {
+    "dense": {
+      "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "api_key": "YOUR_DASHSCOPE_API_KEY",
+      "provider": "openai",
+      "dimension": 1024,
+      "model": "text-embedding-v3"
+    },
+    "max_concurrent": 10
+  },
+  "vlm": {
+    "api_base": "https://api.deepseek.com/v1",
+    "api_key": "YOUR_DEEPSEEK_API_KEY",
+    "provider": "openai",
+    "model": "deepseek-v4-flash",
+    "max_concurrent": 4
+  },
+  "memory": {
+    "version": "v2"
+  },
+  "bot": {
+    "agents": {
+      "model": "deepseek-v4-flash",
+      "provider": "openai",
+      "api_base": "https://api.deepseek.com/v1",
+      "api_key": "YOUR_DEEPSEEK_API_KEY",
+      "max_tool_iterations": 50,
+      "memory_window": 50
+    },
+    "sandbox": {
+      "backend": "direct",
+      "mode": "shared"
+    },
+    "heartbeat": {
+      "enabled": false,
+      "interval_seconds": 600
+    },
+    "ov_server": {
+      "mode": "local",
+      "server_url": "http://127.0.0.1:1933",
+      "account_id": "default",
+      "admin_user_id": "default"
+    },
+    "gateway": {
+      "host": "127.0.0.1",
+      "port": 18790,
+      "token": ""
+    }
+  },
+  "log": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "output": "file",
+    "rotation": true,
+    "rotation_days": 3,
+    "rotation_interval": "midnight"
+  }
+}

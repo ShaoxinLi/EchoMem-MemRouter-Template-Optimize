@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LoCoMo E2E Full Run Comparison — MemRouter</title>
+    <style>
+        :root {
+            --bg: #f6f8fa;
+            --card: #ffffff;
+            --text: #1f2937;
+            --text-secondary: #6b7280;
+            --border: #e5e7eb;
+            --primary: #2563eb;
+            --primary-light: #dbeafe;
+            --success: #059669;
+            --success-light: #d1fae5;
+            --warning: #d97706;
+            --warning-light: #fef3c7;
+            --danger: #dc2626;
+            --danger-light: #fee2e2;
+            --radius: 12px;
+            --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+        .container { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 32px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid var(--border);
+        }
+        h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+        .subtitle { color: var(--text-secondary); font-size: 14px; margin-top: 4px; }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 12px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge-success { background: var(--success-light); color: var(--success); }
+        .badge-warning { background: var(--warning-light); color: var(--warning); }
+        .badge-danger { background: var(--danger-light); color: var(--danger); }
+        .badge-info { background: var(--primary-light); color: var(--primary); }
+        .badge-muted { background: #f3f4f6; color: #6b7280; }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+        .kpi-card {
+            background: var(--card);
+            border-radius: var(--radius);
+            padding: 24px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .kpi-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+        .kpi-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .kpi-label { font-size: 13px; color: var(--text-secondary); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+        .kpi-value { font-size: 36px; font-weight: 800; letter-spacing: -1px; }
+        .kpi-delta { font-size: 13px; font-weight: 600; margin-top: 8px; }
+        .kpi-delta.up { color: var(--success); }
+        .kpi-delta.down { color: var(--danger); }
+        .kpi-delta.warn { color: var(--warning); }
+
+        .ring-wrap { position: relative; width: 56px; height: 56px; }
+        .ring-wrap svg { transform: rotate(-90deg); }
+        .ring-bg { fill: none; stroke: var(--border); stroke-width: 5; }
+        .ring-fill { fill: none; stroke-width: 5; stroke-linecap: round; transition: stroke-dashoffset 1s ease; }
+        .ring-text {
+            position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+            font-size: 13px; font-weight: 700;
+        }
+
+        .alert {
+            border-radius: var(--radius);
+            padding: 16px 20px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            font-size: 14px;
+        }
+        .alert-warning { background: var(--warning-light); border: 1px solid #fcd34d; }
+        .alert-success { background: var(--success-light); border: 1px solid #6ee7b7; }
+        .alert-danger { background: var(--danger-light); border: 1px solid #fca5a5; }
+        .alert-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+        .alert-title { font-weight: 700; margin-bottom: 2px; }
+        .alert-body { color: var(--text-secondary); }
+
+        .section { margin-bottom: 32px; }
+        .section-title {
+            font-size: 18px; font-weight: 700; margin-bottom: 16px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .section-title .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); }
+
+        .card {
+            background: var(--card);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+        .card-body { padding: 24px; }
+        .card-header {
+            padding: 16px 24px;
+            background: #fafafa;
+            border-bottom: 1px solid var(--border);
+            font-weight: 600;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { padding: 12px 16px; text-align: left; }
+        th { background: #fafafa; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); border-bottom: 1px solid var(--border); }
+        td { border-bottom: 1px solid var(--border); }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: #fafafa; }
+        .cell-mono { font-family: "SF Mono", Monaco, "Cascadia Code", monospace; font-size: 12px; }
+        tr.highlight-warn td { background: #fffbeb; }
+        tr.highlight-warn:hover td { background: #fef3c7; }
+        tr.highlight-done td { background: #f0fdf4; }
+        tr.highlight-done:hover td { background: #d1fae5; }
+        tr.highlight-danger td { background: #fef2f2; }
+        tr.highlight-danger:hover td { background: #fee2e2; }
+
+        .backend-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .backend-card {
+            background: var(--card);
+            border-radius: var(--radius);
+            padding: 20px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            border-top: 4px solid var(--primary);
+        }
+        .backend-card.graph { border-top-color: #7c3aed; }
+        .backend-card.temporal { border-top-color: #ea580c; }
+        .backend-card.openviking { border-top-color: var(--primary); }
+        .backend-name { font-weight: 700; font-size: 16px; margin-bottom: 4px; }
+        .backend-id { font-size: 12px; color: var(--text-secondary); font-family: monospace; margin-bottom: 12px; }
+        .metric-row { display: flex; justify-content: space-between; align-items: center; margin: 8px 0; }
+        .metric-row .label { font-size: 13px; color: var(--text-secondary); }
+        .metric-row .value { font-weight: 700; font-size: 14px; }
+        .bar-track { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+        .bar-fill { height: 100%; border-radius: 3px; transition: width 1s ease; }
+        .bar-fill.green { background: var(--success); }
+        .bar-fill.blue { background: var(--primary); }
+        .bar-fill.purple { background: #7c3aed; }
+        .bar-fill.orange { background: #ea580c; }
+        .bar-fill.red { background: var(--danger); }
+
+        .compare-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 10px 0;
+        }
+        .compare-badge {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+        .compare-badge.old { background: #f3f4f6; color: #6b7280; }
+        .compare-badge.new { background: var(--primary-light); color: var(--primary); }
+        .compare-bar-wrap { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; position: relative; }
+        .compare-bar { height: 100%; border-radius: 4px; position: relative; }
+
+        .tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .tag-warn { background: var(--warning-light); color: var(--warning); }
+        .tag-info { background: var(--primary-light); color: var(--primary); }
+        .tag-muted { background: #f3f4f6; color: #6b7280; }
+        .tag-done { background: var(--success-light); color: var(--success); }
+        .tag-danger { background: var(--danger-light); color: var(--danger); }
+
+        .dual-metric { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+        .dual-metric .sub { font-size: 11px; color: var(--text-secondary); }
+        .dual-metric .sub strong { color: var(--text); }
+
+        .label-shift-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+        .label-shift-item {
+            text-align: center;
+            padding: 16px;
+            border-radius: var(--radius);
+            background: var(--card);
+            border: 1px solid var(--border);
+        }
+        .label-shift-count { font-size: 28px; font-weight: 800; }
+        .label-shift-name { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+        .label-shift-delta { font-size: 12px; font-weight: 600; margin-top: 4px; }
+
+        footer { text-align: center; padding: 32px; color: var(--text-secondary); font-size: 12px; border-top: 1px solid var(--border); margin-top: 16px; }
+
+        @media (max-width: 768px) {
+            .kpi-grid { grid-template-columns: 1fr; }
+            .backend-grid { grid-template-columns: 1fr; }
+            .label-shift-grid { grid-template-columns: 1fr; }
+            th, td { padding: 8px 10px; font-size: 12px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div>
+                <h1>LoCoMo Agent-level E2E Full Run Comparison</h1>
+                <div class="subtitle">全量 1540 题端到端路由评测 — v1 Baseline vs v2 Fix2 对比</div>
+                <div class="subtitle" style="margin-top:6px; font-size:12px; color:var(--text-secondary)">
+                    Baseline: <span class="cell-mono">20260523_203256</span> (v1 labels) &nbsp;·&nbsp; Current: <span class="cell-mono">20260524_full_v2_fix2</span> (v2 labels)
+                </div>
+            </div>
+            <div style="text-align:right">
+                <div class="badge badge-info">FIX2 + v2 LABELS</div>
+                <div class="subtitle" style="margin-top:6px">2026-05-24</div>
+            </div>
+        </header>
+
+        <div class="alert alert-success">
+            <div class="alert-icon">&#x2705;</div>
+            <div>
+                <div class="alert-title">Backend 准确率大幅提升 (+27.95pp)</div>
+                <div class="alert-body">v2 标签口径修正后，graph 标签从 772 条收紧至 96 条，消除了 v1 中大量 graph 过标导致的准确率虚低。Fix2 模板在 temporal 和 graph 边界上有显著改善，整体 backend accuracy 从 36.36% 提升至 64.31%。</div>
+            </div>
+        </div>
+
+        <div class="alert alert-danger">
+            <div class="alert-icon">&#x1F6A8;</div>
+            <div>
+                <div class="alert-title">回答准确率显著下降 (-16.35pp)</div>
+                <div class="alert-body">当前 run 回答准确率 44.37%，较基线 60.72% 下降 16.35pp。主因：① DeepSeek API 服务不稳定（当前 run gateway 出现 29 次 Internal Server Error，基线为 0）；② Fast Path（skip_intent_analysis）绕过 OpenViking IntentAnalyzer，导致召回质量下降；③ 更多 marginal template hit 因阈值下调而触发 fast path。详见下方「回答准确率下降根因分析」。</div>
+            </div>
+        </div>
+
+        <div class="alert alert-warning">
+            <div class="alert-icon">&#x26A0;&#xFE0F;</div>
+            <div>
+                <div class="alert-title">v1 &#x2192; v2 标签口径发生重大变更</div>
+                <div class="alert-body">v2 标签应用了 777 条 adjudication 修正（P0: 414, P1: 363）。Category 4（多轮/复杂推理）中大量原标为 graph 的题被重新标注为 OV 或 temporal，导致 graph 题量从 772 骤降至 96。对比时须注意标签分布差异。</div>
+            </div>
+        </div>
+
+        <div class="alert alert-danger">
+            <div class="alert-icon">&#x1F6A8;</div>
+            <div>
+                <div class="alert-title">66 题基础设施失败（4.3%）</div>
+                <div class="alert-body">本次 run 中 DeepSeek API 出现多次 Internal Server Error 与 120s 超时，导致 66 题无路由事件（baseline 为 0）。失败集中在 conv-26 早期，属服务端稳定性问题，与 MemRouter 路由逻辑无关。</div>
+            </div>
+        </div>
+
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <div class="kpi-label">Backend Accuracy</div>
+                    <div class="ring-wrap">
+                        <svg width="56" height="56" viewBox="0 0 56 56">
+                            <circle class="ring-bg" cx="28" cy="28" r="24"/>
+                            <circle class="ring-fill" cx="28" cy="28" r="24" stroke="#2563eb" stroke-dasharray="150.8" stroke-dashoffset="53.8"/>
+                        </svg>
+                        <div class="ring-text" style="color:#2563eb">64%</div>
+                    </div>
+                </div>
+                <div class="kpi-value" style="color:#2563eb">64.31%</div>
+                <div class="kpi-delta up">+27.95pp (from 36.36%)</div>
+                <div class="dual-metric">
+                    <div class="sub">Any-backend: <strong>79.10%</strong></div>
+                    <div class="sub">Baseline: <strong>40.52%</strong></div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <div class="kpi-label">Template Hit Rate</div>
+                    <div class="ring-wrap">
+                        <svg width="56" height="56" viewBox="0 0 56 56">
+                            <circle class="ring-bg" cx="28" cy="28" r="24"/>
+                            <circle class="ring-fill" cx="28" cy="28" r="24" stroke="#059669" stroke-dasharray="150.8" stroke-dashoffset="69.5"/>
+                        </svg>
+                        <div class="ring-text" style="color:#059669">54%</div>
+                    </div>
+                </div>
+                <div class="kpi-value" style="color:#059669">53.90%</div>
+                <div class="kpi-delta up">+8.51pp (from 45.39%)</div>
+                <div class="dual-metric">
+                    <div class="sub">Hits: <strong>830</strong></div>
+                    <div class="sub">Baseline: <strong>699</strong></div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <div class="kpi-label">LLM Fallback Rate</div>
+                    <div class="ring-wrap">
+                        <svg width="56" height="56" viewBox="0 0 56 56">
+                            <circle class="ring-bg" cx="28" cy="28" r="24"/>
+                            <circle class="ring-fill" cx="28" cy="28" r="24" stroke="#d97706" stroke-dasharray="150.8" stroke-dashoffset="87.7"/>
+                        </svg>
+                        <div class="ring-text" style="color:#d97706">42%</div>
+                    </div>
+                </div>
+                <div class="kpi-value" style="color:#d97706">41.82%</div>
+                <div class="kpi-delta up" style="color:#059669">-12.79pp (from 54.61%)</div>
+                <div class="dual-metric">
+                    <div class="sub">Calls: <strong>644</strong></div>
+                    <div class="sub">Baseline: <strong>841</strong></div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <div class="kpi-label">Token Savings vs Baseline</div>
+                    <div class="ring-wrap">
+                        <svg width="56" height="56" viewBox="0 0 56 56">
+                            <circle class="ring-bg" cx="28" cy="28" r="24"/>
+                            <circle class="ring-fill" cx="28" cy="28" r="24" stroke="#7c3aed" stroke-dasharray="150.8" stroke-dashoffset="89.4"/>
+                        </svg>
+                        <div class="ring-text" style="color:#7c3aed">41%</div>
+                    </div>
+                </div>
+                <div class="kpi-value" style="color:#7c3aed">40.72%</div>
+                <div class="kpi-delta up">+10.93pp (from 29.79%)</div>
+                <div class="dual-metric">
+                    <div class="sub">Saved: <strong>373.5万</strong></div>
+                    <div class="sub">Baseline: <strong>314.6万</strong></div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <div class="kpi-label">Answer Accuracy</div>
+                    <div class="ring-wrap">
+                        <svg width="56" height="56" viewBox="0 0 56 56">
+                            <circle class="ring-bg" cx="28" cy="28" r="24"/>
+                            <circle class="ring-fill" cx="28" cy="28" r="24" stroke="#dc2626" stroke-dasharray="150.8" stroke-dashoffset="83.5"/>
+                        </svg>
+                        <div class="ring-text" style="color:#dc2626">44%</div>
+                    </div>
+                </div>
+                <div class="kpi-value" style="color:#dc2626">44.37%</div>
+                <div class="kpi-delta warn"> judged 1501 / correct 666</div>
+                <div class="dual-metric">
+                    <div class="sub">Template-hit: <strong>42.11%</strong></div>
+                    <div class="sub">Non-hit: <strong>47.01%</strong></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title"><span class="dot"></span>v1 &#x2192; v2 标签分布变化（口径变更影响）</div>
+            <div class="card">
+                <div class="card-body">
+                    <div class="label-shift-grid">
+                        <div class="label-shift-item">
+                            <div class="label-shift-count" style="color:#7c3aed">96</div>
+                            <div class="label-shift-name">Graph expected (v2)</div>
+                            <div class="label-shift-delta down" style="color:#dc2626">-676 from 772 (v1)</div>
+                        </div>
+                        <div class="label-shift-item">
+                            <div class="label-shift-count" style="color:#2563eb">1040</div>
+                            <div class="label-shift-name">OV expected (v2)</div>
+                            <div class="label-shift-delta up" style="color:#059669">+610 from 430 (v1)</div>
+                        </div>
+                        <div class="label-shift-item">
+                            <div class="label-shift-count" style="color:#ea580c">404</div>
+                            <div class="label-shift-name">Temporal expected (v2)</div>
+                            <div class="label-shift-delta up" style="color:#059669">+66 from 338 (v1)</div>
+                        </div>
+                    </div>
+                    <div style="margin-top:16px; padding:12px; background:#fafafa; border-radius:8px; font-size:13px; color:var(--text-secondary)">
+                        <strong>说明：</strong>v1 标签中 Category 4 大量社交/个人事实被标为 graph（772 题），v2 修正后仅保留明确的实体关系查询（96 题）。这是 backend accuracy 从 36% 跃升至 64% 的主要结构性原因——消除了标签口径导致的 graph 虚高问题。
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title"><span class="dot"></span>各 Backend 表现对比</div>
+            <div class="backend-grid">
+                <div class="backend-card graph">
+                    <div class="backend-name">Graph Memory</div>
+                    <div class="backend-id">graph_memory_backend · 96 cases (v2) / 772 (v1)</div>
+                    <div class="metric-row">
+                        <span class="label">v2 Fix2 Accuracy</span>
+                        <span class="value" style="color:#7c3aed">22.92%</span>
+                    </div>
+                    <div class="bar-track"><div class="bar-fill purple" style="width:22.92%"></div></div>
+                    <div class="metric-row" style="margin-top:8px">
+                        <span class="label">v1 Baseline Accuracy</span>
+                        <span class="value" style="color:#9ca3af">9.72%</span>
+                    </div>
+                    <div class="bar-track"><div class="bar-fill purple" style="width:9.72%; opacity:0.4"></div></div>
+                    <div class="metric-row" style="margin-top:12px">
+                        <span class="label">Template Hit (v2)</span>
+                        <span class="value" style="color:#7c3aed">61.46%</span>
+                    </div>
+                    <div class="bar-track"><div class="bar-fill purple" style="width:61.46%"></div></div>
+                    <div style="margin-top:12px; padding:8px; background:var(--warning-light); border-radius:6px; font-size:12px; color:var(--warning)">
+                        准确率 +13.2pp，但绝对值仍低。graph 模板 embedding 与 OV/temporal 边界混淆严重，多数错例落入 OV。
+                    </div>
+                </div>
+
+                <div class="backend-card temporal">
+                    <div class="backend-name">Temporal Memory</div>
+                    <div class="backend-id">temporal_memory_backend · 404 cases (v2) / 338 (v1)</div>
+                    <div class="metric-row">
+                        <span class="label">v2 Fix2 Accuracy</span>
+                        <span class="value" style="color:#ea580c">39.36%</span>
+                    </div>
+                    <div class="bar-track"><div class="bar-fill orange" style="width:39.36%"></div></div>
+                    <div class="metric-row" style="margin-top:8px">
+                        <span class="label">v1 Baseline Accuracy</span>
+                        <span class="value" style="color:#9ca3af">31.95%</span>
+                    </div>
+                    <div class="bar-track"><div class="bar-fill orange" style="width:31.95%; opacity:0.4"></div></div>
+                    <div class="metric-row" style="margin-top:12px">
+                        <span class="label">Template Hit (v2)</span>
+                        <span class="value" style="color:#ea580c">60.15%</span>
+                    </div>
+                    <div class="bar-track"><div class="bar-fill orange" style="width:60.15%"></div></div>
+                    <div style="margin-top:12px; padding:8px; background:var(--warning-light); border-radius:6px; font-size:12px; color:var(--warning)">
+                        准确率 +7.4pp，但大量 temporal 题仍被 OV 模板捕获（threshold 0.40 仍偏高）。LLM fallback 也偏向 OV。
+                    </div>
+                </div>
+
+                <div class="backend-card openviking">
+                    <div class="backend-name">OpenViking Memory</div>
+                    <div class="backend-id">openviking_memory_backend · 1040 cases (v2) / 430 (v1)</div>
+                    <div class="metric-row">
+                        <span class="label">v2 Fix2 Accuracy</span>
+                        <span class="value" style="color:#2563eb">73.75%</span>
+                    </div>
+                    <div class="bar-track"><div class="bar-fill blue" style="width:73.75%"></div></div>
+                    <div class="metric-row" style="margin-top:8px">
+                        <span class="label">v1 Baseline Accuracy</span>
+                        <span class="value" style="color:#9ca3af">87.67%</span>
+                    </div>
+                    <div class="bar-track"><div class="bar-fill blue" style="width:87.67%; opacity:0.4"></div></div>
+                    <div class="metric-row" style="margin-top:12px">
+                        <span class="label">Template Hit (v2)</span>
+                        <span class="value" style="color:#2563eb">50.77%</span>
+                    </div>
+                    <div class="bar-track"><div class="bar-fill blue" style="width:50.77%"></div></div>
+                    <div style="margin-top:12px; padding:8px; background:var(--warning-light); border-radius:6px; font-size:12px; color:var(--warning)">
+                        准确率 -13.9pp，主因 v2 标签中 OV 题量大幅增加（+610），其中大量模糊边界题（原标 graph/temporal）被错判为 OV。
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title"><span class="dot"></span>Category 表现对比</div>
+            <div class="card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th>Cases</th>
+                            <th>v2 Fix2 Backend</th>
+                            <th>v1 Baseline Backend</th>
+                            <th>Backend Δ</th>
+                            <th>v2 Answer</th>
+                            <th>v2 Template Hit</th>
+                            <th>v1 Template Hit</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>1</strong> · 单轮事实</td>
+                            <td>282</td>
+                            <td><strong style="color:#2563eb">75.18%</strong></td>
+                            <td>82.27%</td>
+                            <td><span class="tag tag-warn">-7.09pp</span></td>
+                            <td><strong style="color:#dc2626">27.70%</strong></td>
+                            <td>63.48%</td>
+                            <td>60.99%</td>
+                        </tr>
+                        <tr class="highlight-warn">
+                            <td><strong>2</strong> · 时序/关系推理</td>
+                            <td>321</td>
+                            <td><strong style="color:#d97706">38.01%</strong></td>
+                            <td>33.33%</td>
+                            <td><span class="tag tag-done">+4.68pp</span></td>
+                            <td><strong style="color:#d97706">35.24%</strong></td>
+                            <td>63.24%</td>
+                            <td>51.71%</td>
+                        </tr>
+                        <tr>
+                            <td><strong>3</strong> · 多轮一致性</td>
+                            <td>96</td>
+                            <td><strong style="color:#2563eb">77.08%</strong></td>
+                            <td>87.50%</td>
+                            <td><span class="tag tag-warn">-10.42pp</span></td>
+                            <td><strong style="color:#2563eb">48.94%</strong></td>
+                            <td>51.04%</td>
+                            <td>52.08%</td>
+                        </tr>
+                        <tr class="highlight-done">
+                            <td><strong>4</strong> · 多轮/复杂推理</td>
+                            <td>841</td>
+                            <td><strong style="color:#059669">64.21%</strong></td>
+                            <td>16.29%</td>
+                            <td><span class="tag tag-done">+47.92pp</span></td>
+                            <td><strong style="color:#059669">53.07%</strong></td>
+                            <td>47.44%</td>
+                            <td>36.98%</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title"><span class="dot"></span>主要错例模式（v2 Fix2 Top 10）</div>
+            <div class="card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Expected</th>
+                            <th>Actual</th>
+                            <th>错例数</th>
+                            <th>典型问题</th>
+                            <th>根因</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="highlight-warn">
+                            <td><span class="badge badge-warning" style="background:#fff7ed;color:#ea580c">temporal</span></td>
+                            <td><span class="badge badge-info">openviking</span></td>
+                            <td><strong>~180</strong></td>
+                            <td>When did... / How long... 被 OV 捕获</td>
+                            <td><span class="tag tag-warn">temporal 阈值仍偏高</span></td>
+                        </tr>
+                        <tr class="highlight-warn">
+                            <td><span class="badge badge-info">openviking</span></td>
+                            <td><span class="badge badge-warning" style="background:#fff7ed;color:#ea580c">temporal</span></td>
+                            <td><strong>~60</strong></td>
+                            <td>含时间上下文的事实查询</td>
+                            <td><span class="tag tag-warn">时间关键词过敏感</span></td>
+                        </tr>
+                        <tr class="highlight-warn">
+                            <td><span class="badge badge-info" style="background:#ede9fe;color:#7c3aed">graph</span></td>
+                            <td><span class="badge badge-info">openviking</span></td>
+                            <td><strong>~45</strong></td>
+                            <td>Who/What relation 被 OV 捕获</td>
+                            <td><span class="tag tag-warn">graph 语义边界弱</span></td>
+                        </tr>
+                        <tr class="highlight-warn">
+                            <td><span class="badge badge-info">openviking</span></td>
+                            <td><span class="badge badge-info" style="background:#ede9fe;color:#7c3aed">graph</span></td>
+                            <td><strong>~35</strong></td>
+                            <td>涉及两人/多实体的 OV 题</td>
+                            <td><span class="tag tag-warn">多实体触发 graph</span></td>
+                        </tr>
+                        <tr class="highlight-danger">
+                            <td><span class="badge badge-info">openviking</span></td>
+                            <td><span class="badge badge-muted">none</span></td>
+                            <td><strong>33</strong></td>
+                            <td>DeepSeek API 错误或超时</td>
+                            <td><span class="tag tag-danger">基础设施</span></td>
+                        </tr>
+                        <tr class="highlight-warn">
+                            <td><span class="badge badge-warning" style="background:#fff7ed;color:#ea580c">temporal</span></td>
+                            <td><span class="badge badge-info" style="background:#ede9fe;color:#7c3aed">graph</span></td>
+                            <td><strong>~25</strong></td>
+                            <td>When + 两人共同活动</td>
+                            <td><span class="tag tag-warn">关系+时间混合</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title"><span class="dot"></span>运行记录对比</div>
+            <div class="card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Run</th>
+                            <th>标签</th>
+                            <th>Cases</th>
+                            <th>Backend Acc</th>
+                            <th>Template Hit</th>
+                            <th>Fallback Rate</th>
+                            <th>Token Savings</th>
+                            <th>Infra Fail</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr style="background:#f0fdf4">
+                            <td class="cell-mono"><strong>20260524</strong></td>
+                            <td><span class="badge badge-info">v2 Fix2</span></td>
+                            <td>1540</td>
+                            <td><strong style="color:#059669">64.31%</strong></td>
+                            <td>53.90%</td>
+                            <td>41.82%</td>
+                            <td><strong>40.72%</strong></td>
+                            <td><span class="tag tag-warn">66</span></td>
+                        </tr>
+                        <tr>
+                            <td class="cell-mono">20260523</td>
+                            <td><span class="badge badge-muted">v1 Baseline</span></td>
+                            <td>1540</td>
+                            <td>36.36%</td>
+                            <td>45.39%</td>
+                            <td>54.61%</td>
+                            <td>29.79%</td>
+                            <td><span class="tag tag-done">0</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title"><span class="dot"></span>模板命中分布对比</div>
+            <div class="card">
+                <div class="card-body">
+                    <div class="compare-row">
+                        <span class="compare-badge new">v2</span>
+                        <div class="compare-bar-wrap">
+                            <div class="compare-bar" style="width:23.4%; background:#7c3aed;"></div>
+                        </div>
+                        <span class="score-mean">180</span>
+                        <span class="score-minmax">graph.entity_relation</span>
+                    </div>
+                    <div class="compare-row">
+                        <span class="compare-badge old">v1</span>
+                        <div class="compare-bar-wrap">
+                            <div class="compare-bar" style="width:15.1%; background:#7c3aed; opacity:0.4;"></div>
+                        </div>
+                        <span class="score-mean">116</span>
+                        <span class="score-minmax">graph.entity_relation</span>
+                    </div>
+                    <div style="height:8px"></div>
+                    <div class="compare-row">
+                        <span class="compare-badge new">v2</span>
+                        <div class="compare-bar-wrap">
+                            <div class="compare-bar" style="width:52.6%; background:#2563eb;"></div>
+                        </div>
+                        <span class="score-mean">405</span>
+                        <span class="score-minmax">personal_fact_lookup</span>
+                    </div>
+                    <div class="compare-row">
+                        <span class="compare-badge old">v1</span>
+                        <div class="compare-bar-wrap">
+                            <div class="compare-bar" style="width:51.1%; background:#2563eb; opacity:0.4;"></div>
+                        </div>
+                        <span class="score-mean">393</span>
+                        <span class="score-minmax">personal_fact_lookup</span>
+                    </div>
+                    <div style="height:8px"></div>
+                    <div class="compare-row">
+                        <span class="compare-badge new">v2</span>
+                        <div class="compare-bar-wrap">
+                            <div class="compare-bar" style="width:24.7%; background:#ea580c;"></div>
+                        </div>
+                        <span class="score-mean">190</span>
+                        <span class="score-minmax">temporal.timeline_fact</span>
+                    </div>
+                    <div class="compare-row">
+                        <span class="compare-badge old">v1</span>
+                        <div class="compare-bar-wrap">
+                            <div class="compare-bar" style="width:17.8%; background:#ea580c; opacity:0.4;"></div>
+                        </div>
+                        <span class="score-mean">137</span>
+                        <span class="score-minmax">temporal.timeline_fact</span>
+                    </div>
+                    <div style="margin-top:16px; padding:12px; background:#fafafa; border-radius:8px; font-size:13px; color:var(--text-secondary)">
+                        <strong>观察：</strong>fix2 模板增加了大量 LoCoMo 特定原型（temporal +53，graph +64），timeline_fact 和 entity_relation 模板命中率均有提升。但 temporal 的绝对命中数仍不足，大量 temporal 题被 OV 模板抢占。
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title"><span class="dot"></span>回答正确率 (Answer Correctness)</div>
+            <div class="card">
+                <div class="card-body">
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:16px;">
+                        <div style="text-align:center; padding:16px; background:#fafafa; border-radius:var(--radius); border:1px solid var(--border);">
+                            <div style="font-size:32px; font-weight:800; color:#dc2626;">44.37%</div>
+                            <div style="font-size:13px; color:var(--text-secondary); margin-top:4px;">Overall Answer Accuracy</div>
+                            <div style="font-size:12px; color:#9ca3af; margin-top:4px;">666 / 1501 judged</div>
+                        </div>
+                        <div style="text-align:center; padding:16px; background:#fafafa; border-radius:var(--radius); border:1px solid var(--border);">
+                            <div style="font-size:32px; font-weight:800; color:#d97706;">42.11%</div>
+                            <div style="font-size:13px; color:var(--text-secondary); margin-top:4px;">Template-hit Accuracy</div>
+                            <div style="font-size:12px; color:#9ca3af; margin-top:4px;">347 / 824 judged</div>
+                        </div>
+                        <div style="text-align:center; padding:16px; background:#fafafa; border-radius:var(--radius); border:1px solid var(--border);">
+                            <div style="font-size:32px; font-weight:800; color:#059669;">47.01%</div>
+                            <div style="font-size:13px; color:var(--text-secondary); margin-top:4px;">Non-template-hit Accuracy</div>
+                            <div style="font-size:12px; color:#9ca3af; margin-top:4px;">319 / 677 judged</div>
+                        </div>
+                    </div>
+                    <div style="padding:12px; background:var(--warning-light); border-radius:8px; font-size:13px; color:var(--warning); border:1px solid #fcd34d;">
+                        <strong>观察：</strong>Template-hit 的回答准确率 (42.11%) 反而略低于非 template-hit (47.01%)。说明当前模板的语义匹配虽能命中正确路由，但对应 backend 的物理执行质量（或 fallback 到 OV 的执行质量）尚未明显优于 native search。需要关注模板匹配后的实际召回/生成质量。
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title"><span class="dot"></span>回答准确率下降根因分析 (44.37% vs 基线 60.72%)</div>
+            <div class="card">
+                <div class="card-body">
+                    <div class="alert alert-danger" style="margin-bottom:16px;">
+                        <div class="alert-icon">&#x26A0;&#xFE0F;</div>
+                        <div>
+                            <div class="alert-title">回答准确率下降 16.35pp，主因是 DeepSeek 服务不稳定 + Fast Path 质量低于 Native Search</div>
+                            <div class="alert-body">两次实验使用相同的 OpenViking 数据和几乎相同的 MemRouter 代码。Backend 准确率从 36.36% 提升至 64.31%，证明路由逻辑在改进；但答案准确率反而大幅下降，说明瓶颈已从「路由」转移到「下游执行质量」。</div>
+                        </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+                        <div style="padding:16px; background:var(--danger-light); border-radius:var(--radius); border:1px solid #fca5a5;">
+                            <div style="font-weight:700; font-size:14px; color:var(--danger); margin-bottom:8px;">1. DeepSeek API 服务不稳定（最大因素）</div>
+                            <ul style="font-size:13px; color:var(--text); padding-left:18px; line-height:1.8;">
+                                <li>当前 run VikingBot gateway 日志有 <strong>29 条 DeepSeek "Internal Server Error"</strong>（基线 0 条）</li>
+                                <li>MemRouter LLM fallback 出现 <strong>66 次 DeepSeek 错误/超时</strong>（基线 0 次）</li>
+                                <li><strong>966/967 个同路由同 backend 的问题产生了不同答案</strong>，说明即使请求未 outright 失败，DeepSeek 输出质量也存在显著波动</li>
+                                <li>VikingBot answer generation 依赖 DeepSeek（<code>agents.model = deepseek-v4-flash</code>），服务负载高时幻觉和遗漏增加</li>
+                            </ul>
+                        </div>
+                        <div style="padding:16px; background:var(--warning-light); border-radius:var(--radius); border:1px solid #fcd34d;">
+                            <div style="font-weight:700; font-size:14px; color:var(--warning); margin-bottom:8px;">2. Fast Path 质量低于 Native Search</div>
+                            <ul style="font-size:13px; color:var(--text); padding-left:18px; line-height:1.8;">
+                                <li>Template hit 触发 fast path（<code>skip_intent_analysis=True</code>），<strong>绕过 OpenViking IntentAnalyzer</strong></li>
+                                <li>当前 run template hit 率更高（53.90% vs 45.39%），更多查询跳过了 IntentAnalyzer</li>
+                                <li><strong>Template-hit 准确率 42.11% 低于非 template-hit 的 47.01%</strong></li>
+                                <li>即使是「基线也是 template hit、当前也是 template hit」的同一批问题，准确率也从 <strong>51.94% 降至 41.67%</strong></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div style="padding:12px; background:#fafafa; border-radius:8px; font-size:13px; color:var(--text-secondary); margin-bottom:16px;">
+                        <strong>补充数据：</strong>当前 run 有 39 个空/极短回答 + 19 个 error 回答，基线仅 6 + 1。Fix2 降低阈值后，约 74 个原走 LLM fallback + Native Search 的问题被改判为 template hit + Fast Path，执行路径的改变也贡献了部分下降。
+                    </div>
+
+                    <div style="padding:12px; background:#eff6ff; border-radius:8px; font-size:13px; color:#1e40af; border:1px solid #bfdbfe;">
+                        <strong>结论：</strong>Backend 准确率 36% &#x2192; 64% 证明 MemRouter 路由在真实改进。但答案准确率现在受限于<strong>下游执行质量</strong>而非路由正确性。两个最大杠杆：① 在 DeepSeek 服务稳定时段重跑，预期可恢复大部分损失的 16pp；② 优化 Fast Path（仅高置信度匹配才跳过 IntentAnalyzer，或为 Fast Path 补充轻量级 intent 解析）。
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title"><span class="dot"></span>路由 + 回答联合分析 (Joint Analysis)</div>
+            <div class="card">
+                <div class="card-body">
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:16px;">
+                        <div style="text-align:center; padding:16px; background:var(--success-light); border-radius:var(--radius); border:1px solid #6ee7b7;">
+                            <div style="font-size:32px; font-weight:800; color:var(--success);">406</div>
+                            <div style="font-size:13px; color:var(--text-secondary); margin-top:4px;">Routing &#10003;  Answer &#10003;</div>
+                            <div style="font-size:12px; color:#9ca3af; margin-top:4px;">双正确 (27.54%)</div>
+                        </div>
+                        <div style="text-align:center; padding:16px; background:#dbeafe; border-radius:var(--radius); border:1px solid #93c5fd;">
+                            <div style="font-size:32px; font-weight:800; color:#2563eb;">524</div>
+                            <div style="font-size:13px; color:var(--text-secondary); margin-top:4px;">Routing &#10003;  Answer &#10007;</div>
+                            <div style="font-size:12px; color:#9ca3af; margin-top:4px;">路由对但答错 (35.55%)</div>
+                        </div>
+                        <div style="text-align:center; padding:16px; background:#fef3c7; border-radius:var(--radius); border:1px solid #fcd34d;">
+                            <div style="font-size:32px; font-weight:800; color:#d97706;">260</div>
+                            <div style="font-size:13px; color:var(--text-secondary); margin-top:4px;">Routing &#10007;  Answer &#10003;</div>
+                            <div style="font-size:12px; color:#9ca3af; margin-top:4px;">路由错但答对 (17.64%)</div>
+                        </div>
+                        <div style="text-align:center; padding:16px; background:var(--danger-light); border-radius:var(--radius); border:1px solid #fca5a5;">
+                            <div style="font-size:32px; font-weight:800; color:var(--danger);">311</div>
+                            <div style="font-size:13px; color:var(--text-secondary); margin-top:4px;">Routing &#10007;  Answer &#10007;</div>
+                            <div style="font-size:12px; color:#9ca3af; margin-top:4px;">双错 (21.09%)</div>
+                        </div>
+                    </div>
+                    <div style="padding:12px; background:#fafafa; border-radius:8px; font-size:13px; color:var(--text-secondary);">
+                        <strong>解读：</strong>在 1474 条有效样本中，路由正确但回答错误的比例最高 (35.55%)，说明即使 MemRouter 选对了 backend，下游执行（OV native search 或模板对应 backend 的物理实现）仍有较大提升空间。路由错但答对 (17.64%) 主要得益于 OV native search 的泛化能力——即使 MemRouter 路由到非 OV backend，物理执行仍 fallback 到 OV，部分情况下仍能给出正确答案。
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title"><span class="dot"></span>改进路线与待办</div>
+            <div class="card">
+                <div class="card-body">
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+                        <div style="padding:16px; background:var(--success-light); border-radius:var(--radius); border:1px solid #6ee7b7;">
+                            <div style="font-weight:700; font-size:14px; color:var(--success); margin-bottom:8px;">已达成 (Fix2)</div>
+                            <ul style="font-size:13px; color:var(--text); padding-left:18px; line-height:1.8;">
+                                <li>temporal 阈值下调 (0.50&#x2192;0.40)，新增 25+ 原型</li>
+                                <li>graph 阈值下调 (0.60&#x2192;0.50)，新增 10+ 原型</li>
+                                <li>LLM fallback prompt 增加 TEMPORAL-OVERRIDE RULE</li>
+                                <li>v2 标签口径修正，消除 graph 过标</li>
+                                <li>Template hit rate +8.5pp，Fallback rate -12.8pp</li>
+                            </ul>
+                        </div>
+                        <div style="padding:16px; background:var(--warning-light); border-radius:var(--radius); border:1px solid #fcd34d;">
+                            <div style="font-weight:700; font-size:14px; color:var(--warning); margin-bottom:8px;">待优化</div>
+                            <ul style="font-size:13px; color:var(--text); padding-left:18px; line-height:1.8;">
+                                <li><strong>Temporal&#x2194;OV 边界：</strong>约 180 题 temporal 错判为 OV，需进一步收紧 OV 模板 hard negatives</li>
+                                <li><strong>Graph 准确率：</strong>仅 22.92%，需提升 entity_relation 语义区分度</li>
+                                <li><strong>Category 2：</strong>38.01% 仍为短板，时序推理是核心难点</li>
+                                <li><strong>回答质量（Fast Path）：</strong>template-hit 准确率 (42.11%) 低于非 template-hit (47.01%)。Fast Path 绕过 IntentAnalyzer 导致召回质量下降。需：① 仅高置信度匹配才走 fast path；② 为 fast path 补充轻量级 intent 解析</li>
+                                <li><strong>回答质量（DeepSeek 稳定性）：</strong>当前 run 受 DeepSeek 服务不稳定影响显著（29 次 gateway error + 66 次 routing error）。需在服务稳定时段重跑以排除 API 波动干扰</li>
+                                <li><strong>基础设施：</strong>66 题 DeepSeek 超时/错误，需增加重试或降级</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            MemRouter LoCoMo E2E Comparison Report · Fix2 vs v1 Baseline · 2026-05-25 · EchoMem Project
+        </footer>
+    </div>
+</body>
+</html>

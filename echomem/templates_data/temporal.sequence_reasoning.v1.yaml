@@ -1,0 +1,109 @@
+schema_version: "mem-router.backend-route-template.v1"
+template_id: "temporal.sequence_reasoning.v1"
+version: "1.0"
+status: "enabled"
+
+target:
+  primary_backend_id: "temporal_memory_backend"
+  secondary_backend_ids: []
+
+intent_family:
+  name: "temporal_sequence_reasoning"
+  description: "Queries asking for event ordering, first/last occurrence, or relative sequence across remembered events."
+
+semantic_card: >
+  Use this template only when the query asks which of two or more remembered
+  events happened first, happened last, came before another event, or what the
+  order of events was. Temporal ordering must be the core answer need. It is
+  NOT for structured relation traversal, preference queries, or single
+  timestamp lookups.
+
+query_prototypes:
+  # Generic ordering questions
+  - "Which event happened first?"
+  - "Which event happened last?"
+  - "What happened first, EVENT_A or EVENT_B?"
+  - "What happened earlier, EVENT_A or EVENT_B?"
+  - "Which came first, EVENT_A or EVENT_B?"
+  - "Which came later, EVENT_A or EVENT_B?"
+  - "Which did I do first, ACTION_A or ACTION_B?"
+  - "Which task did I complete first?"
+  - "Which trip did I take first?"
+  - "Which device did I set up first?"
+  - "Which pet did PERSON_A adopt first?"
+  - "Which person became a parent first?"
+  - "What is the order of these events?"
+  - "Put these events in chronological order."
+  - "Did EVENT_A happen before EVENT_B?"
+  - "Did EVENT_A happen after EVENT_B?"
+  - "Was EVENT_A earlier than EVENT_B?"
+  - "Was EVENT_A later than EVENT_B?"
+  - "Which of these happened most recently?"
+  - "Which was the earliest remembered event?"
+  # Benchmark-style sequence questions
+  - "Which event did I attend first, the Effective Time Management workshop or the Data Analysis using Python webinar?"
+  - "Which pet did Jolene adopt first, Susie or Seraphim?"
+  - "Which event happened first, the meeting with Rachel or the pride parade?"
+  - "Which event happened first, my attendance at a cultural festival or the start of my Spanish classes?"
+  - "Which device did I set up first, the smart thermostat or the new router?"
+  - "Who became a parent first, Rachel or Alex?"
+  - "Which trip did the narrator take first, the solo trip to Europe or the family road trip?"
+  - "Which task did I complete first, fixing the fence or purchasing three cows?"
+  - "Which task did I complete first, fixing the fence or trimming the goats' hooves?"
+  - "Which happened earlier, buying the shoes or attending the book reading?"
+  # Slot-style variants
+  - "Which of MEMORY_EVENT_A and MEMORY_EVENT_B occurred first?"
+  - "Did PERSONAL_EVENT_A occur before PERSONAL_EVENT_B?"
+  - "Order PERSONAL_EVENT_A, PERSONAL_EVENT_B, and PERSONAL_EVENT_C."
+  - "Which remembered task came before TARGET_EVENT?"
+  - "Which remembered activity happened most recently?"
+  # Chinese generic anchors for cross-lingual coverage
+  - "哪件事先发生？"
+  - "这几件事的先后顺序是什么？"
+  - "A 和 B 哪个更早发生？"
+  - "我先完成了哪项任务？"
+  - "哪个活动是最近一次发生的？"
+
+hard_negatives:
+  - query: "When did PERSON_A start ACTIVITY_X?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Timestamp lookup, not ordering across events."
+  - query: "Where was PERSON_A on DATE_X?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Date-constrained fact lookup, not sequence reasoning."
+  - query: "How many days passed between EVENT_A and EVENT_B?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Duration calculation, not first/last ordering."
+  - query: "How many weeks ago did EVENT_X happen?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Elapsed-time question, not ordering."
+  - query: "What relationship does PERSON_A have with PERSON_B?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Entity relation query, not temporal sequence."
+  - query: "Which field anchors cross-system sync?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Technical dependency graph, not event order."
+  - query: "What caused split-brain dedupe?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Causal graph query, not temporal order."
+  - query: "What books has PERSON_A read?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Personal fact lookup, not ordering."
+  - query: "What items did PERSON_A buy?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Personal fact list, not event sequence."
+  - query: "What is PERSON_A's ethnicity?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Profile fact, not temporal sequence."
+
+thresholds:
+  accept: 0.66
+  fallback: 0.56
+  margin: 0.04
+  hard_negative_margin: 0.03
+  hard_negative_penalty: 0.06
+
+calibration:
+  min_positive_examples: 30
+  min_hard_negatives: 15
+  expected_fallback_rate: 0.20

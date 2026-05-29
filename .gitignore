@@ -1,0 +1,52 @@
+# Python build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+.dmypy.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local secrets
+configs/*.local.yaml
+benchmarks/**/configs/*.local.yaml
+benchmarks/**/configs/ov.conf
+.claude/
+
+# Evaluation run artifacts (inputs tracked, outputs ignored)
+runs/
+benchmarks/locomo/runs/
+
+# Large/generated evaluation data files
+data/memrouter_eval/locomo_e2e_route_labels*.jsonl
+/configs/memrouter_eval.local.yaml

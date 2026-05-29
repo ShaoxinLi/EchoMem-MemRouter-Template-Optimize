@@ -1,0 +1,26 @@
+diff --git a/bot/vikingbot/agent/tools/ov_file.py b/bot/vikingbot/agent/tools/ov_file.py
+index 8ccfdaa7..5555b38f 100644
+--- a/bot/vikingbot/agent/tools/ov_file.py
++++ b/bot/vikingbot/agent/tools/ov_file.py
+@@ -110,10 +114,18 @@ class VikingSearchTool(OVFileTool):
+         target_uri: Optional[str] = "",
+         **kwargs: Any,
+     ) -> str:
++        memrouter_enabled = os.environ.get("MEMROUTER_ENABLED", "false").lower() == "true"
++
+         try:
+             client = await self._get_client(tool_context)
+-            search_client = getattr(client, 'admin_user_client', client)
+-            results = await search_client.search(query, target_uri=target_uri)
++            # Force LocalClient when VIKING_SEARCH_USE_LOCAL_CLIENT=true
++            # This is required for benchmarks where the HTTP server vector store
++            # does not share the same in-memory state as the indexing process.
++            if os.environ.get("VIKING_SEARCH_USE_LOCAL_CLIENT", "false").lower() == "true":
++                search_client = client
++            else:
++                search_client = getattr(client, 'admin_user_client', client)
++
++            results = await search_client.search(query, target_uri=target_uri)
+
+             if not results:
+                 return f"No results found for query: {query}"

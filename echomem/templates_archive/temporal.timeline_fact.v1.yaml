@@ -1,0 +1,129 @@
+schema_version: "mem-router.backend-route-template.v1"
+template_id: "temporal.timeline_fact.v1"
+version: "2.0"
+status: "disabled"
+
+target:
+  primary_backend_id: "temporal_memory_backend"
+  secondary_backend_ids: []
+
+intent_family:
+  name: "timeline_fact_query"
+  description: "Queries asking for facts anchored to a specific time, date, month, year, relative date, or event timestamp."
+
+semantic_card: >
+  Use this template only when the user asks when something happened, what
+  happened at a particular time, or which fact is constrained by a time
+  expression and time itself is the core answer. It is NOT for general
+  personal fact lookup without a time anchor, structured relation traversal,
+  preference queries, or direct current-world tool use.
+
+query_prototypes:
+  # Generic temporal anchors
+  - "When did the event happen?"
+  - "When did PERSON_A do ACTION_X?"
+  - "When did PERSON_A start ACTIVITY_X?"
+  - "When did PERSON_A finish TASK_X?"
+  - "When did PERSON_A leave for PLACE_X?"
+  - "When did PERSON_A announce EVENT_X?"
+  - "When did PERSON_A meet PERSON_B?"
+  - "When did PERSON_A visit PLACE_X?"
+  - "When did PERSON_A buy ITEM_X?"
+  - "When did PERSON_A adopt PET_X?"
+  - "When did PERSON_A move to PLACE_X?"
+  - "When did PERSON_A depart for TRIP_X?"
+  - "When did PERSON_A make FOOD_X?"
+  - "When did PERSON_A team up with PERSON_B?"
+  - "Which year did PERSON_A start ACTIVITY_X?"
+  - "Which year did PERSON_A start practicing ACTIVITY_X?"
+  - "Which month did EVENT_X happen?"
+  - "Which week did PERSON_A visit PLACE_X?"
+  - "When will PERSON_A leave for PLACE_X?"
+  - "When will PERSON_A depart for TRIP_X?"
+  - "When did PERSON_A finish their first CREATIVE_WORK?"
+  - "When did PERSON_A take a trip to PLACE_X?"
+  - "What was DETAIL_X on HOLIDAY_OR_DATE?"
+  - "What was the airline I flew with on HOLIDAY_X?"
+  - "What date did PERSON_A complete TASK_X?"
+  - "What was happening on DATE_X?"
+  - "What did I do on DATE_X?"
+  - "What did I do with PERSON_A on DATE_X?"
+  - "Where was PERSON_A on DATE_X?"
+  - "Where was I on DATE_X?"
+  - "Which places was PERSON_A visiting in MONTH_YEAR?"
+  - "Which place did I visit in MONTH_YEAR?"
+  - "Who was added to PERSON_A's family in MONTH_YEAR?"
+  - "What happened during MONTH_YEAR?"
+  - "What happened around RELATIVE_DATE_X?"
+  - "What happened two months ago?"
+  - "What happened last Wednesday?"
+  # Benchmark-style timeline facts
+  - "When did Evan announce his marriage to his extended family?"
+  - "When did Gina team up with a local artist for some cool designs?"
+  - "When did Caroline go to the LGBTQ support group?"
+  - "When did James depart for his trip to Canada?"
+  - "When did Dave start his car maintenance shop?"
+  - "When did Joanna make a chocolate tart with raspberries?"
+  - "Which places in Canada was Evan visiting in July 2023?"
+  - "What did I do with Rachel on the Wednesday two months ago?"
+  - "Where was James at on July 12, 2022?"
+  - "Who was the new addition to Nate's family in May 2022?"
+  # Chinese generic anchors for cross-lingual coverage
+  - "某件事是什么时候发生的？"
+  - "某人在某个日期做了什么？"
+  - "某人在某年某月去了哪里？"
+  - "我上次什么时候做这件事？"
+  - "某人在什么时候开始这项活动？"
+
+hard_negatives:
+  - query: "What relationship does PERSON_A have with PERSON_B?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Entity relationship query, not timeline lookup."
+  - query: "Who are PERSON_A's friends?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Graph relation traversal, not timestamp lookup."
+  - query: "What caused EVENT_X?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Causal dependency query, not temporal lookup."
+  - query: "What prevents retry double-counting?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "System dependency graph query, not timeline lookup."
+  - query: "What books has PERSON_A read?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Personal fact lookup without a time anchor."
+  - query: "What items did PERSON_A buy?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Personal fact list without explicit time constraint."
+  - query: "What is PERSON_A's preference?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Preference memory query, not temporal lookup."
+  - query: "What did we discuss about PROJECT_X?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Previous chat semantic recall, not timeline lookup."
+  - query: "How many items did I buy?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Count aggregation, not timestamp lookup."
+  - query: "Which component depends on SERVICE_X?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Dependency graph query, not temporal fact."
+  - query: "What tags separate intent from tries?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Technical schema relation, not timeline lookup."
+  - query: "Where does the race finish?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Event detail/location without a strong temporal anchor."
+  - query: "Which countries has James visited?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Personal fact list without a time anchor, not timeline lookup."
+
+thresholds:
+  accept: 0.66
+  fallback: 0.56
+  margin: 0.04
+  hard_negative_margin: 0.03
+  hard_negative_penalty: 0.06
+
+calibration:
+  min_positive_examples: 30
+  min_hard_negatives: 15
+  expected_fallback_rate: 0.20
