@@ -71,7 +71,13 @@ def test_match_single_prototype(mock_embedder: MockEmbeddingProvider) -> None:
         ),
         intent_family=IntentFamily(name="single_proto_test"),
         query_prototypes=["only one prototype"],
-        hard_negatives=[],
+        hard_negatives=[
+            HardNegative(
+                query="not this route",
+                confusing_with_backend="graph_memory_backend",
+                reason="single hard negative evidence",
+            )
+        ],
         thresholds=Thresholds(
             accept=0.72,
             fallback=0.58,
@@ -93,6 +99,10 @@ def test_match_single_prototype(mock_embedder: MockEmbeddingProvider) -> None:
     template_cands, backend_cands = matcher.match(features)
     assert len(template_cands) == 1
     assert template_cands[0].template_id == "single.proto.v1"
+    components = template_cands[0].score_components
+    assert components["top_matched_prototype"]["text"] == "only one prototype"
+    assert components["top_hard_negative"]["query"] == "not this route"
+    assert components["top_hard_negative"]["confusing_with_backend"] == "graph_memory_backend"
     assert len(backend_cands) == 1
 
 

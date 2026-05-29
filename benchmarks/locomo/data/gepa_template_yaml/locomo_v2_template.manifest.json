@@ -1,0 +1,104 @@
+{
+  "input": "/Users/shaoxin/Code/EchoMem-MemRouter-Template-Optimize/benchmarks/locomo/data/locomo_e2e_route_labels.v2.jsonl",
+  "input_sha256": "cd9b330ec164b226157e78ece657d45e855a54a254ceff535278e2b351d37f7e",
+  "seed": 13,
+  "ratios": {
+    "train": 0.7,
+    "val": 0.2,
+    "test": 0.1
+  },
+  "total_count": 1540,
+  "total_sample_ids": 10,
+  "splits": {
+    "train": {
+      "count": 1052,
+      "sample_ids": [
+        "conv-26",
+        "conv-30",
+        "conv-42",
+        "conv-44",
+        "conv-47",
+        "conv-48",
+        "conv-49"
+      ],
+      "expected_backend": {
+        "graph_memory_backend": 66,
+        "openviking_memory_backend": 696,
+        "temporal_memory_backend": 290
+      },
+      "scenario": {
+        "aggregation_summary": 8,
+        "commonality": 36,
+        "entity_relation": 30,
+        "personal_fact": 588,
+        "personal_fact_lookup": 25,
+        "preference_profile": 32,
+        "reasoning": 43,
+        "temporal_fact": 290
+      },
+      "category": {
+        "1": 188,
+        "2": 236,
+        "3": 67,
+        "4": 561
+      }
+    },
+    "val": {
+      "count": 310,
+      "sample_ids": [
+        "conv-41",
+        "conv-50"
+      ],
+      "expected_backend": {
+        "graph_memory_backend": 23,
+        "openviking_memory_backend": 205,
+        "temporal_memory_backend": 82
+      },
+      "scenario": {
+        "aggregation_summary": 4,
+        "commonality": 13,
+        "entity_relation": 10,
+        "personal_fact": 172,
+        "personal_fact_lookup": 11,
+        "preference_profile": 9,
+        "reasoning": 9,
+        "temporal_fact": 82
+      },
+      "category": {
+        "1": 63,
+        "2": 59,
+        "3": 15,
+        "4": 173
+      }
+    },
+    "test": {
+      "count": 178,
+      "sample_ids": [
+        "conv-43"
+      ],
+      "expected_backend": {
+        "graph_memory_backend": 7,
+        "openviking_memory_backend": 139,
+        "temporal_memory_backend": 32
+      },
+      "scenario": {
+        "commonality": 6,
+        "entity_relation": 1,
+        "personal_fact": 117,
+        "personal_fact_lookup": 5,
+        "preference_profile": 5,
+        "reasoning": 12,
+        "temporal_fact": 32
+      },
+      "category": {
+        "1": 31,
+        "2": 26,
+        "3": 14,
+        "4": 107
+      }
+    }
+  },
+  "warnings": [
+    "Input has 10 or fewer sample_id groups; grouped test results may have high variance."
+  ]
+}

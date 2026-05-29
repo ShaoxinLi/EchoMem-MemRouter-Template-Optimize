@@ -1,0 +1,37 @@
+# Local config for scripts/optimize_memrouter_template_yaml_gepa.py.
+# Copy to configs/memrouter_gepa.local.yaml and fill provider settings as needed.
+
+embedding:
+  provider: mock
+  dim: 16
+  # provider: openai
+  # model: text-embedding-3-small
+  # api_key: ${OPENAI_API_KEY}
+  # base_url: null
+  # output_dimension: null
+  # max_batch_size: null
+
+proposal_lm:
+  # Required for --profile full. In --profile dry-run, omitted model uses a no-op proposal LM.
+  model: null
+  api_key: ${OPENAI_API_KEY}
+  base_url: null
+  temperature: 0.0
+  max_tokens: 12000
+  # DeepSeek v4 models need these fields to return visible content.
+  # reasoning_effort: high
+  # extra_body:
+  #   thinking:
+  #     type: enabled
+
+llm_feedback:
+  enabled: false
+  model: null
+  api_key: ${OPENAI_API_KEY}
+  base_url: null
+  temperature: 0.0
+  max_tokens: 2000
+  # reasoning_effort: high
+  # extra_body:
+  #   thinking:
+  #     type: enabled

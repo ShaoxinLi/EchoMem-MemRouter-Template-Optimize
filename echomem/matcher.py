@@ -11,7 +11,7 @@ requires zero code changes here.
 
 import logging
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -36,7 +36,7 @@ class TemplateCandidate:
     template_id: str
     primary_backend_id: str
     score: float
-    score_components: Dict[str, float]
+    score_components: Dict[str, Any]
 
 
 @dataclass
@@ -110,7 +110,7 @@ class TemplateMatcher:
         self,
         template: MemoryBackendRouteTemplate,
         query_vec: np.ndarray,
-    ) -> Tuple[float, Dict[str, float]]:
+    ) -> Tuple[float, Dict[str, Any]]:
         """Compute final score for a single template.
 
         Returns:
@@ -118,9 +118,10 @@ class TemplateMatcher:
         """
         # --- Positive prototype scoring ---
         proto_embeddings, centroid = self._get_prototype_embeddings(template)
-        s_max = float(np.max(proto_embeddings @ query_vec))
-        # Top-K mean (guard against templates with fewer than _TOP_K_MEAN prototypes)
         sims = proto_embeddings @ query_vec
+        s_max = float(np.max(sims))
+        top_proto = self._top_matched_prototype(template, sims)
+        # Top-K mean (guard against templates with fewer than _TOP_K_MEAN prototypes)
         k = min(_TOP_K_MEAN, len(sims))
         if k > 0:
             top_k_indices = np.argpartition(sims, -k)[-k:]
@@ -134,7 +135,9 @@ class TemplateMatcher:
         # --- Hard-negative penalty ---
         neg_embeddings = self._get_negative_embeddings(template)
         if len(neg_embeddings) > 0:
-            s_neg = float(np.max(neg_embeddings @ query_vec))
+            neg_sims = neg_embeddings @ query_vec
+            s_neg = float(np.max(neg_sims))
+            top_hard_negative = self._top_hard_negative(template, neg_sims)
             m_neg = s_pos - s_neg
             delta_neg = template.thresholds.hard_negative_margin
             lambda_pen = template.thresholds.hard_negative_penalty
@@ -142,6 +145,7 @@ class TemplateMatcher:
             s_final = s_pos - penalty
         else:
             s_neg = 0.0
+            top_hard_negative = None
             penalty = 0.0
             s_final = s_pos
 
@@ -153,8 +157,41 @@ class TemplateMatcher:
             "s_neg": round(s_neg, 4),
             "penalty": round(penalty, 4),
             "s_final": round(s_final, 4),
+            "top_matched_prototype": top_proto,
+            "top_hard_negative": top_hard_negative,
         }
         return s_final, components
+
+    @staticmethod
+    def _top_matched_prototype(
+        template: MemoryBackendRouteTemplate,
+        sims: np.ndarray,
+    ) -> Dict[str, Any] | None:
+        if not template.query_prototypes:
+            return None
+        idx = int(np.argmax(sims[: len(template.query_prototypes)]))
+        return {
+            "index": idx,
+            "text": template.query_prototypes[idx],
+            "score": round(float(sims[idx]), 4),
+        }
+
+    @staticmethod
+    def _top_hard_negative(
+        template: MemoryBackendRouteTemplate,
+        sims: np.ndarray,
+    ) -> Dict[str, Any] | None:
+        if not template.hard_negatives:
+            return None
+        idx = int(np.argmax(sims[: len(template.hard_negatives)]))
+        hard_negative = template.hard_negatives[idx]
+        return {
+            "index": idx,
+            "query": hard_negative.query,
+            "confusing_with_backend": hard_negative.confusing_with_backend,
+            "reason": hard_negative.reason,
+            "score": round(float(sims[idx]), 4),
+        }
 
     def _get_prototype_embeddings(
         self, template: MemoryBackendRouteTemplate
