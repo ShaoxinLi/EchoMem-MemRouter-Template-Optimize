@@ -32,7 +32,7 @@ $ErrorActionPreference = "Stop"
 $scriptDir    = $PSScriptRoot
 $benchmarkRoot = Split-Path -Parent $scriptDir                  # benchmarks/locomo
 $echomemRoot  = (Resolve-Path "$benchmarkRoot\..\..").Path     # EchoMem 仓库根目录
-$ovRoot       = "D:\Code\cursorProject\OpenViking"              # OpenViking 仓库路径
+$ovRoot       = "/Users/shaoxin/Code/OpenViking-0.3.12"         # OpenViking 仓库路径
 
 # 基准包内路径
 $dataDir      = "$benchmarkRoot\data"
