@@ -43,9 +43,6 @@ DETERMINISTIC_ACTION_TYPE_DEFINITIONS = {
     "add_wrong_template_hard_negatives": "Add hard_negatives to the wrong winning template to reduce false positives.",
     "add_discriminative_prototypes_or_hard_negatives": "Improve a close decision by adding expected prototypes or wrong-template hard negatives.",
     "lower_expected_accept_or_margin": "Slightly lower accept or margin for the expected template when it ranks first but is not accepted.",
-    "raise_wrong_accept_or_margin": "Slightly raise accept or margin for an over-accepting wrong template.",
-    "narrow_or_remove_overbroad_prototypes": "Rewrite or remove overbroad query_prototypes when a wrong template wins with strong confidence.",
-    "relax_expected_hard_negative_penalty": "Rewrite/remove overbroad hard_negatives or reduce their penalty when they suppress the expected template.",
 }
 
 
@@ -1565,7 +1562,6 @@ def recommend_deterministic_action(output: dict[str, Any]) -> dict[str, Any]:
     expected_template_id = str(output.get("expected_backend_best_template_id") or "")
     expected_rank = output.get("expected_backend_rank")
     expected_score = float(output.get("expected_backend_score") or 0.0)
-    winning_score = float(output.get("winning_backend_score") or 0.0)
     margin_to_win = float(output.get("margin_to_win") or 0.0)
     is_no_decision = bool(output.get("is_no_decision"))
 
@@ -1581,9 +1577,6 @@ def recommend_deterministic_action(output: dict[str, Any]) -> dict[str, Any]:
             rationale="This case is already correct and should anchor future Proposal changes.",
         )
 
-    expected_penalty = float(
-        (output.get("expected_template_score_components") or {}).get("penalty") or 0.0
-    )
     matched_accept = output.get("matched_template_accept")
     matched_margin = output.get("matched_template_margin")
     accept_gap = None
@@ -1591,21 +1584,6 @@ def recommend_deterministic_action(output: dict[str, Any]) -> dict[str, Any]:
         accept_gap = float(matched_accept) - expected_score
 
     if is_no_decision and expected_rank == 1:
-        if expected_penalty >= 0.02:
-            return _action_recommendation(
-                action_type="relax_expected_hard_negative_penalty",
-                diagnosis="expected backend ranked first but appears suppressed by hard negatives",
-                target_backend=expected_backend,
-                target_template_id=matched_template_id or expected_template_id,
-                field="hard_negatives/thresholds",
-                direction="rewrite_or_remove_hard_negatives_or_reduce_penalty",
-                priority="medium",
-                rationale=(
-                    "The expected template ranks first but carries hard-negative penalty; "
-                    "overbroad hard_negatives may be blocking acceptance."
-                ),
-                guardrail="Do not remove hard_negatives that protect known false-positive patterns.",
-            )
         return _action_recommendation(
             action_type="lower_expected_accept_or_margin",
             diagnosis="expected backend ranked first but was not accepted",
@@ -1636,22 +1614,6 @@ def recommend_deterministic_action(output: dict[str, Any]) -> dict[str, Any]:
         )
 
     if expected_rank is None or expected_rank > 2:
-        if winning_score >= 0.60 and margin_to_win <= -0.12:
-            return _action_recommendation(
-                action_type="narrow_or_remove_overbroad_prototypes",
-                diagnosis="wrong template wins with strong confidence",
-                target_backend=winning_backend,
-                target_template_id=matched_template_id,
-                field="query_prototypes",
-                direction="rewrite_or_remove_overbroad_patterns",
-                priority="high",
-                rationale=(
-                    "The expected backend is not competitive and the wrong template wins by a large margin; "
-                    "its prototypes may be too broad for this pattern."
-                ),
-                guardrail="Only narrow broad patterns; preserve prototypes that support correct routes.",
-                secondary_action_type="add_expected_backend_prototypes",
-            )
         return _action_recommendation(
             action_type="add_expected_backend_prototypes",
             diagnosis="expected backend coverage is weak",
@@ -1662,7 +1624,6 @@ def recommend_deterministic_action(output: dict[str, Any]) -> dict[str, Any]:
             priority="high",
             rationale="The expected backend is outside the top two backends, indicating weak positive coverage.",
             guardrail="Use generalized patterns, not exact minibatch questions.",
-            secondary_action_type="add_wrong_template_hard_negatives",
         )
 
     if expected_rank <= 2 and margin_to_win > -0.08:
@@ -1676,21 +1637,6 @@ def recommend_deterministic_action(output: dict[str, Any]) -> dict[str, Any]:
             priority="medium",
             rationale="The expected backend is close to the winner; small discriminative edits may flip the route.",
             guardrail="Prefer edits that separate backend intent rather than broad threshold changes.",
-            secondary_action_type="add_wrong_template_hard_negatives",
-        )
-
-    if winning_score >= 0.62:
-        return _action_recommendation(
-            action_type="raise_wrong_accept_or_margin",
-            diagnosis="wrong template may be over-accepting",
-            target_backend=winning_backend,
-            target_template_id=matched_template_id,
-            field="thresholds",
-            direction="slightly_increase_accept_or_margin",
-            priority="medium",
-            rationale="The wrong backend is accepted with high score; threshold tightening may reduce false positives.",
-            guardrail="Avoid broad threshold increases that create No Decision regressions.",
-            secondary_action_type="add_wrong_template_hard_negatives",
         )
 
     return _action_recommendation(

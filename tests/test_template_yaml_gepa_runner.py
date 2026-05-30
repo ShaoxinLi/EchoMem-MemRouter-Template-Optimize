@@ -124,7 +124,7 @@ def test_deterministic_feedback_preserves_correct_case() -> None:
     assert feedback["action_recommendation"]["direction"] == "preserve"
 
 
-def test_deterministic_feedback_relaxes_hard_negative_when_expected_template_is_penalized() -> None:
+def test_deterministic_feedback_lowers_threshold_when_expected_template_ranks_first() -> None:
     feedback = deterministic_feedback_for_case(
         {
             "case_id": "case-2",
@@ -146,11 +146,11 @@ def test_deterministic_feedback_relaxes_hard_negative_when_expected_template_is_
         }
     )
 
-    assert feedback["suggested_action_type"] == "relax_expected_hard_negative_penalty"
-    assert feedback["action_recommendation"]["field"] == "hard_negatives/thresholds"
+    assert feedback["suggested_action_type"] == "lower_expected_accept_or_margin"
+    assert feedback["action_recommendation"]["field"] == "thresholds"
 
 
-def test_deterministic_feedback_narrows_overbroad_prototypes_for_confident_wrong_route() -> None:
+def test_deterministic_feedback_adds_expected_prototypes_when_expected_backend_ranks_low() -> None:
     feedback = deterministic_feedback_for_case(
         {
             "case_id": "case-3",
@@ -169,9 +169,9 @@ def test_deterministic_feedback_narrows_overbroad_prototypes_for_confident_wrong
         }
     )
 
-    assert feedback["suggested_action_type"] == "narrow_or_remove_overbroad_prototypes"
-    assert feedback["action_recommendation"]["target_template_id"] == "openviking.personal_fact_lookup.en.v2"
-    assert feedback["action_recommendation"]["secondary_action_type"] == "add_expected_backend_prototypes"
+    assert feedback["suggested_action_type"] == "add_expected_backend_prototypes"
+    assert feedback["action_recommendation"]["target_template_id"] == "graph.entity_relation.v1"
+    assert "secondary_action_type" not in feedback["action_recommendation"]
 
 
 def test_cached_invalid_proposal_restores_validator_feedback(tmp_path: Path) -> None:
