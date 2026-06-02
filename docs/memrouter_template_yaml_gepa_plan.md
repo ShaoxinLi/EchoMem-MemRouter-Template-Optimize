@@ -932,3 +932,41 @@ runs/memrouter_template_yaml_gepa/<run_id>/
 `template_accept_rate` 提升不一定代表 routing quality 提升。如果大量 No Decision 被错误 backend 吸收，`template_accept_rate` 会升高，但 `backend_accuracy` 和 `macro_backend_recall` 会暴露问题。
 
 `temporal_wrong` 等 wrong bucket 在后期可能变大。原因是前期大量样本在 `no_decision_cases` 中；后期覆盖率提升后，这些样本会被路由到某个 backend，其中错误路由会显性进入对应 wrong bucket。
+
+
+## 19. 下一步计划
+我建议下一阶段目标从“提高覆盖率”切到“提高干净度和可泛化性”。
+计划
+1. 先清理 Selected 以当前 Selected 为输入，去重、删除明显重复或跨 intent 的 prototypes / hard negatives。目标不是继续涨数量，而是得到一个更干净的 Selected v2。
+2. 强化 Validator 增加硬约束：
+- 禁止同一 template 内重复 query_prototypes。
+- 禁止同一 template 内重复 hard_negatives.query。
+- 禁止同一 query 同时出现在同一 template 的 positive 和 hard negative 中。
+- 对过低 threshold 加 warning 或 hard limit，避免单纯靠降 threshold 提升 accept rate。
+3. 调整 GEPA Score 当前 score 对 template_accept_rate 奖励较强，容易鼓励“尽量都接住”。下一版应加入 false_accept_penalty。
+false_accept 定义：matcher 接受了 backend，但 predicted_backend != expected_backend。
+目标是：奖励正确接受，惩罚错误接受，而不是单纯奖励非 No Decision。
+4. 加强 overbroad penalty 当前 overbroad_penalty 只在单 template 错误吸收比例超过 0.35 后才生效，太弱。下一版应让 graph.entity_relation、personal_fact_lookup、timeline_fact 这类集中误吸更早被惩罚。
+5. 优化 LLM Feedback 和 Proposal Prompt 明确告诉 Proposal LLM：
+- 不优先做纯 additive growth。
+- 对 overbroad template，优先 rewrite / remove / add hard negatives。
+- threshold 只能小幅调整，不能作为主要优化手段。
+- 保留高质量 Parent 项，但删除重复、过宽、跨 intent 的项。
+6. 调整 bucket_random 采样 后期 no_decision_cases 为空时，把这部分 quota 转给 wrong buckets，特别是：
+- temporal_wrong
+- openviking_wrong
+- graph_wrong
+
+这样后期 feedback 会更集中在 residual confusion，而不是继续扩大覆盖率。
+7. 重新跑对照实验 至少跑两组：
+- 当前代码 baseline：已有 20260602_002431
+- 新 score + 新 Validator + 新 prompt
+
+对比指标不只看 GEPA Score，还要看：
+- backend accuracy
+- macro backend recall
+- false accept count
+- duplicate count
+- average prototypes / hard negatives per template
+- top confusion pairs
+我的判断：下一阶段最关键的是改 GEPA Score 和 Validator。否则 Proposal LLM 即使 prompt 写得更好，也仍然会被当前 score 引导到“降低 threshold + 大量添加 pattern”的方向。
