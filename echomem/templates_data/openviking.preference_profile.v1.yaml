@@ -2,167 +2,75 @@ schema_version: "mem-router.backend-route-template.v1"
 template_id: "openviking.preference_profile.v1"
 version: "1.0"
 status: "enabled"
-
 target:
   primary_backend_id: "openviking_memory_backend"
   secondary_backend_ids: []
-
 intent_family:
   name: "preference_profile"
   description: "User asks about their own preferences, habits, lifestyle choices, personal profile, or subjective experiences."
-
-semantic_card: >
-  Use this template when the query is about what the user likes, prefers,
-  routinely does, or how they describe themselves. This includes habits,
-  lifestyle, personal background, ethnicity, stressors, coping mechanisms,
-  time-management techniques, and any question that seeks a subjective or
-  profile-oriented answer. It does NOT cover structured relations between
-  entities, temporal ordering, or system dependency queries.
-
+semantic_card: >-
+  Use this template when the query is about what the user likes, prefers, routinely does, or how they describe themselves. This includes habits, lifestyle, personal background, ethnicity, stressors, coping mechanisms, time-management techniques, and any question that seeks a subjective or profile-oriented answer. It does NOT cover structured relations between entities, temporal ordering, or system dependency queries.
 query_prototypes:
-  # Abstract layer
-  - "What is someone's preference?"
-  - "What does someone prefer?"
-  - "What is someone's habit?"
-  - "What does someone usually do?"
-  - "What is someone's lifestyle like?"
-  - "What is someone's background?"
-  - "What is someone's ethnicity?"
-  - "What is the biggest stressor in someone's life?"
-  - "How does someone prefer to work?"
-  - "What does someone do on hikes?"
-  - "What is someone's preferred technique for managing time?"
-  - "What is someone's favorite way to do something?"
-  - "What does someone enjoy doing?"
-  - "What is someone's daily routine?"
-  - "What is someone's personal style?"
-
-  # Slot layer
-  - "What time management techniques do {person} and {person2} use?"
-  - "What is the biggest stressor in {person}'s life besides {thing}?"
-  - "What is my {personal_attribute}?"
-  - "How does {person} prefer to {action}?"
-  - "What is {person}'s favorite {category}?"
-  - "What does {person} enjoy doing in {time_of_day}?"
-  - "What is {person}'s preferred {tool_or_method}?"
-  - "What lifestyle choice does {person} make about {topic}?"
-  - "What coping mechanism does {person} use for {situation}?"
-
-  # Benchmark-derived layer
-  - "What time management techniques do Deborah and Jolene use?"
-  - "What does Melanie do with her family on hikes?"
-  - "What is the biggest stressor in Andrew's life besides not being able to hike frequently?"
-  - "What is my ethnicity?"
-  - "Would Dave prefer working on a Dodge Charger or a Subaru Forester?"
-  - "What is Dave's preferred work style?"
-  - "How does John describe the support he received during his journey?"
-  - "What passion does John mention connects him with people?"
-
-  # Concrete layer
-  - "What is my preferred communication style?"
-  - "How do I like my reports formatted?"
-  - "What is my favorite programming language?"
-  - "What kind of music do I prefer?"
-
-  # Chat meta-reference layer (merged from previous_chat_recall)
-  - "我之前说过我喜欢什么沟通方式吗？"
-  - "你记得我的代码风格偏好吗？"
-  - "我之前告诉过你我的技术背景吗？"
-  - "按我的偏好来处理这个任务"
-  - "我平时希望你怎么给我汇报？"
-  - "你记得我说过我在学什么吗？"
-  - "我上次跟你提过我的项目进展吗？"
-  - "我们之前讨论过我的时间表吗？"
-  - "你还记得我对这个问题的看法吗？"
-  - "我跟你说过我打算怎么做吗？"
-  - "上次聊天时我提到的那个工具叫什么？"
-  - "我之前让你记住什么？"
-  - "你还记得我的配置偏好吗？"
-  - "我提到过我最擅长的领域吗？"
-  - "你记得我之前给你的要求吗？"
-
-  # v2 expansion — coverage gaps from Natural audit
-  - "What are John's goals with regards to his basketball career?"
-  - "What are my short-term fitness goals?"
-  - "What does Sarah want to achieve in her new role?"
-  - "Why does Dave regularly visit parks?"
-  - "Why does Lisa prefer working from home?"
-  - "What motivates Tom to exercise every morning?"
-  - "What does Mark do in his free time besides gaming?"
-  - "What other interests does Jenny have besides painting?"
-  - "How does John describe the support he received during his journey?"
-  - "What passion does John mention connects him with people?"
-  - "What coping mechanism does someone use for stressful situations?"
-  - "How does someone handle pressure at work?"
-  - "What is someone's preferred way to relax?"
-  - "What time does someone usually go to the gym?"
-  - "What time do I usually exercise?"
-  - "What is someone's usual workout schedule?"
-  - "Why does someone sometimes put off doing a routine?"
-  - "Why does someone delay a personal habit?"
-  - "What reasons does someone have for postponing an activity?"
-  - "What other exercises can help someone with sports performance?"
-  - "What fitness habits support someone's athletic goals?"
-  - "What activities should someone try based on their personal goals?"
-
+  - "What preference does PERSON_A have?"
+  - "What does PERSON_A prefer?"
+  - "What habit does PERSON_A have?"
+  - "What does PERSON_A usually do?"
+  - "What is PERSON_A's lifestyle like?"
+  - "What is PERSON_A's background?"
+  - "What personal attribute does PERSON_A identify with?"
+  - "What is PERSON_A's biggest stressor?"
+  - "How does PERSON_A prefer to work?"
+  - "What does PERSON_A do during ACTIVITY_X?"
+  - "What time-management technique does PERSON_A use?"
+  - "What is PERSON_A's favorite way to do ACTIVITY_X?"
+  - "What does PERSON_A enjoy doing?"
+  - "What is PERSON_A's daily routine?"
+  - "What is PERSON_A's personal style?"
+  - "How does PERSON_A prefer to communicate?"
+  - "How does PERSON_A like reports formatted?"
+  - "What kind of music does PERSON_A prefer?"
+  - "What coping mechanism does PERSON_A use for STRESSOR_X?"
+  - "How does PERSON_A handle pressure at work?"
+  - "What is PERSON_A's preferred way to relax?"
+  - "What time does PERSON_A usually exercise?"
+  - "What workout schedule does PERSON_A usually follow?"
+  - "Why does PERSON_A delay ROUTINE_X?"
+  - "What motivates PERSON_A to do ACTIVITY_X?"
+  - "What other interests does PERSON_A have besides ACTIVITY_X?"
+  - "What short-term fitness goal does PERSON_A have?"
+  - "What does PERSON_A want to achieve in ROLE_X?"
+  - "What fitness habits support PERSON_A's athletic goals?"
 hard_negatives:
-  - query: "What items did Calvin buy in March 2023?"
+  - query: "Which purchase did PERSON_A make in MONTH_X?"
     confusing_with_backend: "openviking_memory_backend"
-    reason: "Concrete purchase fact, not preference"
-  - query: "Where did Audrey get Pixie from?"
+    reason: "Single purchase fact, not preference profile."
+  - query: "What was the origin of PERSON_A's PET_X?"
     confusing_with_backend: "openviking_memory_backend"
-    reason: "Concrete origin fact, not preference"
-  - query: "When did Jon visit networking events for his store?"
+    reason: "Single origin fact, not preference profile."
+  - query: "At what time did PERSON_A attend EVENT_X?"
     confusing_with_backend: "temporal_memory_backend"
-    reason: "Temporal fact, not preference"
-  - query: "How many days before I bought the iPhone 13 Pro did I attend the Holiday Market?"
+    reason: "Single temporal fact, not preference profile."
+  - query: "What was the day gap between PURCHASE_X and EVENT_Y?"
     confusing_with_backend: "temporal_memory_backend"
-    reason: "Duration comparison, not preference"
-  - query: "Jon 和 Gina 是什么关系？"
+    reason: "Duration comparison, not preference profile."
+  - query: "Which relationship links PERSON_A and PERSON_B?"
     confusing_with_backend: "graph_memory_backend"
-    reason: "Entity relation query"
-  - query: "What caused split-brain dedupe?"
+    reason: "Relation query, not preference profile."
+  - query: "What technical cause produced SYSTEM_FAILURE_X?"
     confusing_with_backend: "graph_memory_backend"
-    reason: "Causal multi-hop query"
-  - query: "What is the total cost of my recently purchased headphones and the iPad?"
+    reason: "Causal query, not preference profile."
+  - query: "What is the total cost of ITEM_A and ITEM_B?"
     confusing_with_backend: "openviking_memory_backend"
-    reason: "Aggregation query, not single preference"
-  - query: "What groups search queries reliably?"
+    reason: "Arithmetic over facts, not preference profile."
+  - query: "Which API path starts REQUEST_X?"
     confusing_with_backend: "graph_memory_backend"
-    reason: "System mechanism query"
-  - query: "What to photograph during install?"
+    reason: "System dependency query, not preference profile."
+  - query: "Can you recall what you recommended before?"
     confusing_with_backend: "openviking_memory_backend"
-    reason: "Technical instruction, not personal preference"
-  - query: "Which two IDs must purchases include?"
-    confusing_with_backend: "graph_memory_backend"
-    reason: "System rule query"
-  # Merged from previous_chat_recall hard negatives
-  - query: "Can you suggest some activities that I can do in the evening?"
+    reason: "Previous chat recall, not preference profile."
+  - query: "What kind of tattoo does PERSON_A have?"
     confusing_with_backend: "openviking_memory_backend"
-    reason: "Suggestion request, not chat recall or preference"
-  # v4 relation-first hard negatives
-  - query: "Which book was John reading during his recovery from an ankle injury?"
-    confusing_with_backend: "graph_memory_backend"
-    reason: "Person-object relation, not preference"
-  - query: "What kind of tattoo does Audrey have on her arm?"
-    confusing_with_backend: "graph_memory_backend"
-    reason: "Person-attribute relation, not preference"
-  - query: "Does Dave's shop employ a lot of people?"
-    confusing_with_backend: "graph_memory_backend"
-    reason: "Organization relation, not preference"
-  - query: "Which city has 1.2 million residents?"
-    confusing_with_backend: "graph_memory_backend"
-    reason: "Entity-attribute relation, not preference"
-  - query: "What can tasks link to?"
-    confusing_with_backend: "graph_memory_backend"
-    reason: "Entity-entity relation, not preference"
-  - query: "Which API path starts all calls?"
-    confusing_with_backend: "graph_memory_backend"
-    reason: "System entity relation, not preference"
-  - query: "What activities does Deborah pursue besides practicing and teaching yoga?"
-    confusing_with_backend: "graph_memory_backend"
-    reason: "Activity enumeration, not preference/profile"
-
+    reason: "Single personal fact, not preference profile."
 query_spec:
   search_mode: "search"
   openviking:
@@ -173,15 +81,13 @@ query_spec:
       intent: "preference_profile"
       priority: 1
       target_directories: null
-
 thresholds:
   accept: 0.65
-  fallback: 0.58
+  fallback: 0.0
   margin: 0.04
   hard_negative_margin: 0.03
   hard_negative_penalty: 0.06
-
 calibration:
-  min_positive_examples: 25
+  min_positive_examples: 29
   min_hard_negatives: 10
-  expected_fallback_rate: 0.20
+  expected_fallback_rate: 0.2

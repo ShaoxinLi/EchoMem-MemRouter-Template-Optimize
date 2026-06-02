@@ -2,105 +2,71 @@ schema_version: "mem-router.backend-route-template.v1"
 template_id: "openviking.aggregation_summary.v2"
 version: "2.0"
 status: "enabled"
-
 target:
   primary_backend_id: "openviking_memory_backend"
   secondary_backend_ids: []
-
 intent_family:
   name: "aggregation_summary"
   description: "User asks for aggregation, comparison, summary, or list across multiple memory fragments."
-
-semantic_card: >
-  Use this template when the query requires combining, comparing, or
-  summarizing multiple subjective memory pieces (preferences, habits,
-  experiences) rather than retrieving a single concrete fact or structured
-  relation. Signals include: compare preferences, overall trend, common
-  themes, suggestions based on accumulated context, or summary of subjective
-  experiences. Does NOT cover entity-attribute totals, person-event lists,
-  or pure temporal durations.
-
+semantic_card: >-
+  Use this template when the query requires combining, comparing, or summarizing multiple subjective memory pieces (preferences, habits, experiences) rather than retrieving a single concrete fact or structured relation. Signals include: compare preferences, overall trend, common themes, suggestions based on accumulated context, or summary of subjective experiences. Does NOT cover entity-attribute totals, person-event lists, or pure temporal durations.
 query_prototypes:
-  # Abstract layer
-  - "Compare two preferences"
-  - "Summarize someone's experiences"
-  - "What is the overall trend?"
-  - "Which option is better based on past behavior?"
-  - "What are the common themes?"
-  - "What is the combined result?"
-
-  # Slot layer
-  - "Would {person} prefer {option_a} or {option_b}?"
-  - "Can you suggest some {activities} based on my preferences?"
-  - "What is the overall {metric} across all {events}?"
-  - "Which {thing} is better based on my past {behavior}?"
-  - "What are the common {attributes} in my {collection}?"
-
-  # Benchmark-derived layer
-  - "Would Dave prefer working on a Dodge Charger or a Subaru Forester?"
-  - "Can you suggest some activities that I can do in the evening?"
-  - "Compare my spending habits across different categories"
-
-  # Concrete layer
-  - "Which store gave me better discounts overall?"
-
-  # v3 expansion — coverage gaps from Natural audit
-  - "What are the main factors that influenced my career choice?"
-
-  # v5 expansion - recommendation and planning requests routed to OpenViking
-  - "Can you suggest new recipes based on my meal prep preferences?"
-  - "What recipes should I try for next week's meal prep?"
-  - "I'm planning my meal prep next week, any recipe suggestions?"
-  - "Can you recommend interesting cultural events near me this weekend?"
-  - "What cultural events should I consider based on my interests?"
-  - "Suggest weekend activities that fit my preferences."
-  - "What other exercises can help with basketball performance?"
-  - "Can you suggest exercises based on someone's sports goals?"
-  - "What activities would help someone improve their athletic performance?"
-  - "What should I try next based on what I usually enjoy?"
-
+  - "Compare PERSON_A's preferences across OPTION_SET_X."
+  - "Summarize PERSON_A's experiences with TOPIC_X."
+  - "What is the overall trend across MEMORY_SET_X?"
+  - "Which option is better based on MEMORY_SET_X?"
+  - "What are the common themes across MEMORY_SET_X?"
+  - "What is the combined result across EVENT_SET_X?"
+  - "Would PERSON_A prefer OPTION_A or OPTION_B?"
+  - "Can you suggest ACTIVITY_X options based on PREFERENCE_SET_X?"
+  - "What is the overall METRIC_X across EVENT_SET_X?"
+  - "Which OPTION_X is better based on MEMORY_SET_X?"
+  - "What are the common attributes in COLLECTION_X?"
+  - "Compare BEHAVIOR_SET_X across CATEGORY_SET_X."
+  - "Suggest weekend activities that fit INTEREST_SET_X."
+  - "What factors influenced PERSON_A's career choice overall?"
+  - "Can you suggest new recipes based on PREFERENCE_SET_X?"
+  - "What recipes should PERSON_A try for TIME_PERIOD_X?"
+  - "Can you recommend events based on INTEREST_SET_X?"
+  - "What other exercises can help with GOAL_X?"
+  - "Which activities would improve PERFORMANCE_X?"
+  - "What should PERSON_A try next based on MEMORY_SET_X?"
+  - "What patterns appear across PERSON_A's recent activities?"
+  - "What themes recur in PERSON_A's personal memories?"
+  - "Which recommendation best matches PERSON_A's past choices?"
+  - "What summary describes PERSON_A's preferences over time?"
+  - "What activities should PERSON_A try based on personal goals?"
 hard_negatives:
-  - query: "What items did Calvin buy in March 2023?"
-    confusing_with_backend: "graph_memory_backend"
-    reason: "Single purchase fact (person-entity relation), not aggregation"
-  - query: "Where did Audrey get Pixie from?"
+  - query: "Which item did PERSON_A purchase during MONTH_X?"
     confusing_with_backend: "openviking_memory_backend"
-    reason: "Single origin fact, not aggregation"
-  - query: "When did Jon visit networking events for his store?"
+    reason: "Single purchase fact, not aggregation."
+  - query: "Where did PERSON_A get PET_X from?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Single origin fact, not aggregation."
+  - query: "When did PERSON_A visit EVENT_X?"
     confusing_with_backend: "temporal_memory_backend"
-    reason: "Single temporal fact"
-  - query: "How many days before I bought the iPhone 13 Pro did I attend the Holiday Market?"
+    reason: "Single temporal fact, not aggregation."
+  - query: "How many days passed between PURCHASE_X and EVENT_Y?"
     confusing_with_backend: "temporal_memory_backend"
-    reason: "Duration comparison between two events, not multi-fragment aggregation"
-  - query: "Jon 和 Gina 是什么关系？"
+    reason: "Duration comparison, not aggregation."
+  - query: "Which direct relation links PERSON_A with PERSON_B?"
     confusing_with_backend: "graph_memory_backend"
-    reason: "Relation query"
-  - query: "What caused split-brain dedupe?"
+    reason: "Relation query, not aggregation."
+  - query: "What caused SYSTEM_FAILURE_X?"
     confusing_with_backend: "graph_memory_backend"
-    reason: "Causal query"
-  - query: "What is my ethnicity?"
+    reason: "Causal query, not aggregation."
+  - query: "What personal attribute does PERSON_A have?"
     confusing_with_backend: "openviking_memory_backend"
-    reason: "Single profile attribute, not aggregation"
-  - query: "What does Melanie do with her family on hikes?"
+    reason: "Single profile attribute, not aggregation."
+  - query: "What habit does PERSON_A have during ACTIVITY_X?"
     confusing_with_backend: "openviking_memory_backend"
-    reason: "Single habit description, not aggregation"
-  - query: "What time management techniques do Deborah and Jolene use?"
-    confusing_with_backend: "openviking_memory_backend"
-    reason: "Preference query, not summary/aggregation"
-  - query: "What to photograph during install?"
+    reason: "Single habit description, not aggregation."
+  - query: "Which technical object is considered core?"
     confusing_with_backend: "graph_memory_backend"
-    reason: "System procedure query, not subjective aggregation"
-  # v4 relation-first hard negatives
-  - query: "Which profile favors long-term diversity?"
+    reason: "System classification relation, not aggregation."
+  - query: "What is the first debugging step for SYSTEM_X?"
     confusing_with_backend: "graph_memory_backend"
-    reason: "System configuration relation, not aggregation"
-  - query: "Which objects are considered core?"
-    confusing_with_backend: "graph_memory_backend"
-    reason: "Entity classification relation, not aggregation"
-  - query: "What's first debugging step?"
-    confusing_with_backend: "graph_memory_backend"
-    reason: "System procedure relation, not aggregation"
-
+    reason: "System procedure query, not subjective aggregation."
 query_spec:
   search_mode: "search"
   openviking:
@@ -111,15 +77,13 @@ query_spec:
       intent: "aggregation_summary"
       priority: 1
       target_directories: null
-
 thresholds:
   accept: 0.65
-  fallback: 0.58
+  fallback: 0.0
   margin: 0.04
   hard_negative_margin: 0.03
   hard_negative_penalty: 0.06
-
 calibration:
-  min_positive_examples: 20
+  min_positive_examples: 25
   min_hard_negatives: 10
-  expected_fallback_rate: 0.20
+  expected_fallback_rate: 0.2

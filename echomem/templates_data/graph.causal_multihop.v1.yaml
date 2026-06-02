@@ -2,108 +2,83 @@ schema_version: "mem-router.backend-route-template.v1"
 template_id: "graph.causal_multihop.v1"
 version: "2.0"
 status: "enabled"
-
 target:
   primary_backend_id: "graph_memory_backend"
   secondary_backend_ids: []
-
 intent_family:
   name: "causal_multihop"
   description: "Queries asking for causal chains, dependencies, blockers, root causes, or multi-hop reasoning across linked events/entities."
-
-semantic_card: >
-  Use this template when a query asks why something happened, what caused a
-  result, what prevents a behavior, what should trigger a downstream action,
-  or how one event/system/entity leads to another through one or more links.
-
+semantic_card: >-
+  Use this template when a query asks why something happened, what caused a result, what prevents a behavior, what should trigger a downstream action, or how one event/system/entity leads to another through one or more links.
 query_prototypes:
-  # Generic causal and multi-hop questions
-  - "What caused this outcome?"
-  - "Why did this issue happen?"
-  - "What led to this result?"
-  - "What prevents this behavior?"
-  - "What triggered this downstream action?"
-  - "What should missing data trigger?"
-  - "What dependency caused the failure?"
-  - "Which upstream event caused the downstream issue?"
-  - "Which condition prevents retry double-counting?"
-  - "Which rule caused this dedupe result?"
-  - "What root cause links these events?"
-  - "What chain of events produced this result?"
-  - "Which intermediate entity connects the cause and effect?"
-  - "How does one system state lead to another system state?"
-  - "Why can a metric look healthy while the system is failing?"
-  - "What makes the observed behavior misleading?"
-  - "What explains this mismatch across systems?"
-  - "How do these linked facts imply the answer?"
-  - "Which path connects the symptom to the root cause?"
-  - "Which evidence chain supports this conclusion?"
-  # Slot-style causal questions
-  - "What caused EVENT_X?"
-  - "Why did SYSTEM_X produce OUTCOME_Y?"
-  - "What prevents ACTION_X from double-counting?"
+  - "What caused OUTCOME_X?"
+  - "Why did EVENT_X happen?"
+  - "What led to RESULT_X?"
+  - "What prevents ACTION_X from succeeding?"
+  - "What triggered EVENT_X?"
   - "What should CONDITION_X trigger?"
+  - "What dependency caused FAILURE_X?"
+  - "Which upstream event caused ISSUE_X?"
+  - "Which rule caused RESULT_X?"
+  - "What root cause links EVENT_A to EVENT_B?"
+  - "What chain of events produced OUTCOME_X?"
+  - "Which intermediate entity connects CAUSE_X and EFFECT_X?"
+  - "How does STATE_A lead to STATE_B?"
+  - "Why can METRIC_X look healthy while ISSUE_X exists?"
+  - "What explains the mismatch between SIGNAL_X and RESULT_X?"
+  - "How do linked facts imply CONCLUSION_X?"
+  - "Which path connects SYMPTOM_X to CAUSE_Y?"
+  - "Which evidence chain supports CONCLUSION_X?"
   - "What caused ENTITY_A and ENTITY_B to diverge?"
-  - "How does SIGNAL_X affect RESULT_Y?"
-  - "Which dependency links SERVICE_A to FAILURE_B?"
-  - "What rule connects INPUT_X to OUTPUT_Y?"
-  - "Why does METRIC_X look fine despite ISSUE_Y?"
-  - "What anchors the causal chain between EVENT_A and EVENT_B?"
-  # Benchmark-style short questions
-  - "What prevents retry double-counting?"
-  - "What caused split-brain dedupe?"
-  - "How detect rules not behaving?"
-  - "Why can throughput look fine?"
-  - "What inflated cart actions?"
-  - "Why are energy dates shifted?"
-  - "What should missing IDs trigger?"
-  - "How confirm routing is balanced?"
-  - "What explains the reporting mismatch?"
-  - "What dependency caused the rollback issue?"
-
+  - "How does SIGNAL_X affect RESULT_X?"
+  - "What rule connects INPUT_X to OUTPUT_X?"
+  - "Why did ACTION_X produce EFFECT_X?"
+  - "Which condition explains why OUTCOME_X occurred?"
+  - "How did EVENT_A contribute to EVENT_B?"
+  - "What prevents RESULT_X despite CONDITION_Y?"
+  - "Why did the expected downstream state fail to appear?"
+  - "Which upstream dependency explains the final result?"
+  - "How did multiple linked events lead to RESULT_X?"
+  - "What causal link explains BEHAVIOR_X?"
+  - "Why did SYSTEM_X produce unexpected RESULT_X?"
 hard_negatives:
-  # Temporal: time/sequence is the core answer, not causal chain
-  - query: "Which event happened first?"
+  - query: "Which remembered event occurred earliest?"
     confusing_with_backend: "temporal_memory_backend"
-    reason: "Temporal sequence, not causal graph traversal."
-  - query: "How many days passed between EVENT_A and EVENT_B?"
+    reason: "Temporal ordering, not causal reasoning."
+  - query: "How much time passed between EVENT_A and EVENT_B?"
     confusing_with_backend: "temporal_memory_backend"
     reason: "Duration comparison, not causal reasoning."
-  # OpenViking: subjective semantic memory, not structured causal links
-  - query: "What causes has John done events for?"
+  - query: "At what time did PERSON_A perform ACTION_X?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Timestamp lookup, not causal chain."
+  - query: "What personal goal does PERSON_A have?"
     confusing_with_backend: "openviking_memory_backend"
-    reason: "The word causes means charity causes, not causal reasoning."
-  - query: "Which US state was PERSON_A travelling in during DATE?"
+    reason: "Personal semantic fact, not causal graph reasoning."
+  - query: "What item did PERSON_A buy?"
     confusing_with_backend: "openviking_memory_backend"
-    reason: "Personal location lookup, not causal multihop."
-  - query: "What is PERSON_A's goal?"
+    reason: "Single personal fact, not causal chain."
+  - query: "Can you recall what we discussed earlier?"
     confusing_with_backend: "openviking_memory_backend"
-    reason: "Personal semantic fact, not causal graph query."
-  - query: "Can you summarize what we discussed before?"
-    confusing_with_backend: "openviking_memory_backend"
-    reason: "OpenViking semantic recall, not causal graph traversal."
-  # Entity-relation: same backend (graph), kept for template-level discrimination
-  - query: "What is the relationship between PERSON_A and PERSON_B?"
+    reason: "Previous conversation recall, not causal reasoning."
+  - query: "Which social relation links PERSON_A with PERSON_B?"
     confusing_with_backend: "graph_memory_backend"
     reason: "Entity relation traversal, not causal multihop."
-  - query: "Who are PERSON_A's friends?"
+  - query: "Which organization is PERSON_A a member of?"
     confusing_with_backend: "graph_memory_backend"
-    reason: "Direct relation query, not causal chain."
-  - query: "Which organization does PERSON_A belong to?"
+    reason: "Membership relation, not causal chain."
+  - query: "Which synchronization field links SYSTEM_A to SYSTEM_B?"
     confusing_with_backend: "graph_memory_backend"
-    reason: "Membership relation query, not causal chain."
-  - query: "What did PERSON_A discuss with PERSON_B?"
+    reason: "System dependency query, not causal multihop."
+  - query: "Which identifier should every record contain?"
     confusing_with_backend: "graph_memory_backend"
-    reason: "Discussion relation, not causal chain."
-
+    reason: "Schema dependency lookup, not causal reasoning."
 thresholds:
   accept: 0.66
-  fallback: 0.56
+  fallback: 0.0
   margin: 0.04
   hard_negative_margin: 0.03
   hard_negative_penalty: 0.06
-
 calibration:
-  min_positive_examples: 40
-  min_hard_negatives: 15
-  expected_fallback_rate: 0.20
+  min_positive_examples: 30
+  min_hard_negatives: 10
+  expected_fallback_rate: 0.2

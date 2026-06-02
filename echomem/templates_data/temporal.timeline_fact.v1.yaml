@@ -1,267 +1,94 @@
-schema_version: mem-router.backend-route-template.v1
-template_id: temporal.timeline_fact.v1
-version: '2.1'
-status: enabled
+schema_version: "mem-router.backend-route-template.v1"
+template_id: "temporal.timeline_fact.v1"
+version: "2.1"
+status: "enabled"
 target:
-  primary_backend_id: temporal_memory_backend
+  primary_backend_id: "temporal_memory_backend"
   secondary_backend_ids: []
 intent_family:
-  name: timeline_fact_query
-  description: Queries asking for facts anchored to a specific time, date, month, year, relative date, or event timestamp.
-semantic_card: 'Use this template only when the user asks when something happened, what happened at a particular time, or
-  which fact is constrained by a time expression and time itself is the core answer. It is NOT for general personal fact lookup
-  without a time anchor, structured relation traversal, preference queries, or direct current-world tool use.
-
-  '
+  name: "timeline_fact_query"
+  description: "Queries asking for facts anchored to a specific time, date, month, year, relative date, or event timestamp."
+semantic_card: >-
+  Use this template only when the user asks when something happened, what happened at a particular time, or which fact is constrained by a time expression and time itself is the core answer. It is NOT for general personal fact lookup without a time anchor, structured relation traversal, preference queries, or direct current-world tool use.
 query_prototypes:
-- When did the event happen?
-- When did PERSON_A do ACTION_X?
-- When did PERSON_A start ACTIVITY_X?
-- When did PERSON_A finish TASK_X?
-- When did PERSON_A leave for PLACE_X?
-- When did PERSON_A announce EVENT_X?
-- When did PERSON_A meet PERSON_B?
-- When did PERSON_A visit PLACE_X?
-- When did PERSON_A buy ITEM_X?
-- When did PERSON_A adopt PET_X?
-- When did PERSON_A move to PLACE_X?
-- When did PERSON_A depart for TRIP_X?
-- When did PERSON_A make FOOD_X?
-- When did PERSON_A make FOOD_X for themselves?
-- When did PERSON_A team up with PERSON_B?
-- Which year did PERSON_A start ACTIVITY_X?
-- Which year did PERSON_A start practicing ACTIVITY_X?
-- Which month did EVENT_X happen?
-- Which week did PERSON_A visit PLACE_X?
-- Which week did PERSON_A do ACTION_X?
-- When will PERSON_A leave for PLACE_X?
-- When will PERSON_A depart for TRIP_X?
-- When did PERSON_A finish their first CREATIVE_WORK?
-- When did PERSON_A take a trip to PLACE_X?
-- When did PERSON_A travel to PLACE_X for the first time?
-- When did PERSON_A lose their job?
-- When did PERSON_A lose JOB_X?
-- When did PERSON_A donate ITEM_X?
-- When did PERSON_A join GROUP_X?
-- When did PERSON_A join ORGANIZATION_X?
-- When did PERSON_A first do ACTION_X?
-- When did PERSON_A first watch MOVIE_X?
-- When did PERSON_A resume ACTIVITY_X?
-- When did PERSON_A's RELATIVE pass away?
-- When did PERSON_A pass away?
-- When did PERSON_A gift ITEM_X to PERSON_B?
-- When did PERSON_A receive ITEM_X?
-- When did PERSON_A see EVENT_X?
-- When did PERSON_A perform ACTION_X live?
-- What was DETAIL_X on HOLIDAY_OR_DATE?
-- What was the airline I flew with on HOLIDAY_X?
-- What date did PERSON_A complete TASK_X?
-- What was happening on DATE_X?
-- What did I do on DATE_X?
-- What did I do with PERSON_A on DATE_X?
-- Where was PERSON_A on DATE_X?
-- Where was I on DATE_X?
-- Which places was PERSON_A visiting in MONTH_YEAR?
-- Which place did I visit in MONTH_YEAR?
-- Who was added to PERSON_A's family in MONTH_YEAR?
-- What happened during MONTH_YEAR?
-- What happened around RELATIVE_DATE_X?
-- What happened two months ago?
-- What happened last Wednesday?
-- What was PERSON_A doing on DATE_X?
-- What activity was PERSON_A pursuing on DATE_X?
-- What kind of project was PERSON_A working on in TIME_PERIOD?
-- When did PERSON_A paint a NOUN_X?
-- When did PERSON_A run a EVENT_X?
-- When did PERSON_A sign up for ACTIVITY_X?
-- When did PERSON_A have a EVENT_X?
-- When did PERSON_A apply to PLACE_X?
-- When did PERSON_A draw a NOUN_X?
-- When did PERSON_A encounter someone on ACTIVITY_X?
-- When did PERSON_A encounter people and have a negative experience?
-- When did PERSON_A make a NOUN_X in ACTIVITY_CLASS?
-- Which city was PERSON_A in before traveling to PLACE_X?
-- Where was PERSON_A between DATE_X and DATE_Y?
-- Which city was PERSON_A visiting in MONTH_YEAR?
-- When did PERSON_A and PERSON_B go to EVENT_X together?
-- When did PERSON_A decide to do ACTIVITY_X with PERSON_B?
-- When did PERSON_A meet with PERSON_B after returning from PLACE_X?
-- When did Evan announce his marriage to his extended family?
-- When did Gina team up with a local artist for some cool designs?
-- When did Caroline go to the LGBTQ support group?
-- When did James depart for his trip to Canada?
-- When did Dave start his car maintenance shop?
-- When did Joanna make a chocolate tart with raspberries?
-- Which places in Canada was Evan visiting in July 2023?
-- What did I do with Rachel on the Wednesday two months ago?
-- Where was James at on July 12, 2022?
-- Who was the new addition to Nate's family in May 2022?
-- 某件事是什么时候发生的？
-- 某人在某个日期做了什么？
-- 某人在某年某月去了哪里？
-- 我上次什么时候做这件事？
-- 某人在什么时候开始这项活动？
-- When did PERSON_A paint a sunrise?
-- When did PERSON_A donate their car?
-- When did PERSON_A join an online support group?
-- When did PERSON_A make muffins for themselves?
-- Which recreational activity was PERSON_A pursuing on DATE_X?
-- When did PERSON_A resume playing drums in adulthood?
-- When did PERSON_A see BAND_X perform live?
-- When did PERSON_A's mom gift ITEM_X to PERSON_B?
-- When did PERSON_A lose their job at COMPANY_X?
-- When did PERSON_A take up HOBBY_X?
-- How long has PERSON_A been doing ACTIVITY_X?
-- How long has PERSON_A been practicing ACTIVITY_X?
-- How long has PERSON_A been married?
-- How long did it take PERSON_A to finish TASK_X?
-- How long did it take PERSON_A to complete PROJECT_X?
-- How many months passed between EVENT_X and EVENT_Y?
-- How many years passed between EVENT_X and EVENT_Y?
-- When was the last time PERSON_A did ACTION_X?
-- When was the last photo of PERSON_A and PERSON_B taken?
-- Which book did PERSON_A read in MONTH_YEAR?
-- Which movie did PERSON_A watch in MONTH_YEAR?
-- When did PERSON_A plan on doing ACTION_X?
-- When is PERSON_A going to do ACTION_X?
-- When did PERSON_A plan to visit PLACE_X?
-- When did PERSON_A get into ACCIDENT_TYPE?
-- When did PERSON_A get injured?
-- When did PERSON_A start learning SKILL_X?
-- When did PERSON_A begin ACTIVITY_X?
-- When did PERSON_A go for their first ACTIVITY_X?
-- When did PERSON_A start working on PROJECT_X?
-- When did PERSON_A start working at PLACE_X?
-- When did PERSON_A start taking CARE_OF_ITEM?
-- When did PERSON_A get their first ITEM_X?
-- When did PERSON_A receive their first ITEM_X?
-- When did PERSON_A run a charity race?
-- When did PERSON_A go to the museum?
-- When did PERSON_A read the book BOOK_TITLE?
-- When did PERSON_A go camping in MONTH?
-- When did PERSON_A go to a pride parade during the summer?
-- How many times has PERSON_A gone to the beach in YEAR?
-- When is PERSON_A's daughter's birthday?
-- When did PERSON_A encounter people on ACTIVITY_X and have a negative experience?
-- When did PERSON_A visit networking events for their store?
-- When did PERSON_A start expanding their studio's social media presence?
-- When did PERSON_A start reading BOOK_TITLE?
-- When did PERSON_A get in a car accident?
-- When did PERSON_A start volunteering at PLACE_X?
-- When did PERSON_A help renovate their hometown community center?
-- How long has PERSON_A had their first two pets?
-- When did PERSON_A start writing their third screenplay?
-- When did PERSON_A hike with their buddies?
-- What significant event happened in PERSON_A's life towards the end of TIME_PERIOD?
-- How many years ago did PERSON_A move from PLACE_X?
-- What happened first, EVENT_A or EVENT_B?
-- How many days passed between EVENT_X and EVENT_Y?
-- How long did two people date before moving in together?
-- When did PERSON_A first visit PLACE_X?
+  - "When did EVENT_X happen?"
+  - "When did PERSON_A do ACTION_X?"
+  - "When did PERSON_A start ACTIVITY_X?"
+  - "When did PERSON_A finish TASK_X?"
+  - "When did PERSON_A leave for PLACE_X?"
+  - "When did PERSON_A announce EVENT_X?"
+  - "When did PERSON_A meet PERSON_B?"
+  - "When did PERSON_A visit PLACE_X?"
+  - "When did PERSON_A buy ITEM_X?"
+  - "When did PERSON_A adopt PET_X?"
+  - "When did PERSON_A move to PLACE_X?"
+  - "When did PERSON_A depart for TRIP_X?"
+  - "When did PERSON_A begin JOB_X?"
+  - "When did PERSON_A lose JOB_X?"
+  - "When did PERSON_A join GROUP_X?"
+  - "When did PERSON_A resume ACTIVITY_X?"
+  - "When did PERSON_A first watch MEDIA_X?"
+  - "When did PERSON_A win COMPETITION_X?"
+  - "When did PERSON_A make FOOD_X?"
+  - "When did PERSON_A see PERFORMANCE_X?"
+  - "Which year did PERSON_A adopt PET_X?"
+  - "Which month did PERSON_A start ACTIVITY_X?"
+  - "Which week did PERSON_A attend EVENT_X?"
+  - "On what date did PERSON_A travel to PLACE_X?"
+  - "Where was PERSON_A on DATE_X?"
+  - "What did PERSON_A do on DATE_X?"
+  - "Where did PERSON_A go in MONTH_YEAR_X?"
+  - "What happened on DATE_X?"
+  - "What event happened during TIME_PERIOD_X?"
+  - "When was the last time PERSON_A did ACTION_X?"
+  - "When did PERSON_A plan to do ACTION_X?"
+  - "When did PERSON_A first do ACTION_X?"
+  - "When did PERSON_A get ITEM_X?"
+  - "When did PERSON_A share PHOTO_X?"
+  - "When did PERSON_A encounter PERSON_B during ACTIVITY_X?"
+  - "When did PERSON_A receive ITEM_X from RELATIVE_X?"
+  - "When did PERSON_A attend CEREMONY_X?"
+  - "When did PERSON_A return from TRIP_X?"
+  - "What was PERSON_A doing on DATE_X?"
+  - "Where was PHOTO_X taken on DATE_X?"
 hard_negatives:
-- query: What relationship does PERSON_A have with PERSON_B?
-  confusing_with_backend: graph_memory_backend
-  reason: Entity relationship query, not timeline lookup.
-- query: Who are PERSON_A's friends?
-  confusing_with_backend: graph_memory_backend
-  reason: Graph relation traversal, not timestamp lookup.
-- query: What caused EVENT_X?
-  confusing_with_backend: graph_memory_backend
-  reason: Causal dependency query, not temporal lookup.
-- query: What prevents retry double-counting?
-  confusing_with_backend: graph_memory_backend
-  reason: System dependency graph query, not timeline lookup.
-- query: What books has PERSON_A read?
-  confusing_with_backend: openviking_memory_backend
-  reason: Personal fact lookup without a time anchor.
-- query: What items did PERSON_A buy?
-  confusing_with_backend: openviking_memory_backend
-  reason: Personal fact list without explicit time constraint.
-- query: What is PERSON_A's preference?
-  confusing_with_backend: openviking_memory_backend
-  reason: Preference memory query, not temporal lookup.
-- query: What did we discuss about PROJECT_X?
-  confusing_with_backend: openviking_memory_backend
-  reason: Previous chat semantic recall, not timeline lookup.
-- query: How many items did I buy?
-  confusing_with_backend: openviking_memory_backend
-  reason: Count aggregation, not timestamp lookup.
-- query: Which component depends on SERVICE_X?
-  confusing_with_backend: graph_memory_backend
-  reason: Dependency graph query, not temporal fact.
-- query: What tags separate intent from tries?
-  confusing_with_backend: graph_memory_backend
-  reason: Technical schema relation, not timeline lookup.
-- query: Where does the race finish?
-  confusing_with_backend: openviking_memory_backend
-  reason: Event detail/location without a strong temporal anchor.
-- query: Which countries has James visited?
-  confusing_with_backend: openviking_memory_backend
-  reason: Personal fact list without a time anchor, not timeline lookup.
-- query: What type of volunteering have PERSON_A and PERSON_B both done?
-  confusing_with_backend: graph_memory_backend
-  reason: Co-participation relation, not timestamp lookup.
-- query: Which places or events have PERSON_A and PERSON_B planned to meet at?
-  confusing_with_backend: graph_memory_backend
-  reason: Planned meeting relation, not timestamp lookup.
-- query: Who did PERSON_A have dinner with on DATE_X?
-  confusing_with_backend: graph_memory_backend
-  reason: Social relation query with date context, not when-did-it-happen.
-- query: Which recreational activity was PERSON_A pursuing on DATE_X?
-  confusing_with_backend: openviking_memory_backend
-  reason: Activity fact anchored to date, but activity type is the answer.
-- query: What kind of project was PERSON_A working on in TIME_PERIOD?
-  confusing_with_backend: openviking_memory_backend
-  reason: Project-type fact with time context, not timestamp lookup.
-- query: Which of PERSON_A's family and friends have passed away?
-  confusing_with_backend: openviking_memory_backend
-  reason: Answer is a person list, not a timestamp.
-- query: What items did PERSON_A buy in MONTH_YEAR?
-  confusing_with_backend: openviking_memory_backend
-  reason: Answer is purchased items, not the time of purchase.
-- query: Where did PERSON_A move from 4 years ago?
-  confusing_with_backend: openviking_memory_backend
-  reason: Asks for origin location, not the time of move. "4 years ago" is context, not the answer.
-- query: Who supports PERSON_A when they have a negative experience?
-  confusing_with_backend: openviking_memory_backend
-  reason: Asks for a person/supporter, not a timestamp. "when" is conditional, not temporal.
-- query: What does PERSON_A say ACTIVITY_X has been great for?
-  confusing_with_backend: openviking_memory_backend
-  reason: Asks for a benefit/reason, not a time.
-- query: Where did PERSON_A explore on a road trip last year?
-  confusing_with_backend: openviking_memory_backend
-  reason: Asks for location/place, not the time of the trip.
-- query: What did PERSON_A receive from their brother that brought back childhood memories?
-  confusing_with_backend: openviking_memory_backend
-  reason: Asks for a gift/item, not a time. "childhood" is descriptive, not a timestamp query.
-- query: What significant event happened in PERSON_A's life towards the end of summer 2023?
-  confusing_with_backend: openviking_memory_backend
-  reason: Asks for event description, not the date/time. "summer 2023" narrows scope but is not the answer.
-- query: What kind of online group did PERSON_A join?
-  confusing_with_backend: openviking_memory_backend
-  reason: Asks for group type/category, not join date.
-- query: What did PERSON_A share a photo of when mentioning unwinding at home?
-  confusing_with_backend: openviking_memory_backend
-  reason: Asks for photo subject, not a timestamp.
-- query: How will PERSON_A share the recipe with the other person?
-  confusing_with_backend: openviking_memory_backend
-  reason: Asks for method/way, not a time.
-- query: Where was the forest picture shared by PERSON_A on December 1, 2023 taken?
-  confusing_with_backend: openviking_memory_backend
-  reason: Asks for photo location, not the date of sharing.
-- query: What is the topic of discussion between PERSON_A and PERSON_B on DATE?
-  confusing_with_backend: openviking_memory_backend
-  reason: Asks for discussion topic, not the time of discussion.
-- query: According to PERSON_B, what makes PERSON_A a perfect mentor and guide?
-  confusing_with_backend: openviking_memory_backend
-  reason: Asks for personal attribute assessment, not a timestamp.
+  - query: "What is the link between PERSON_A and PERSON_B?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Entity relation, not timestamp lookup."
+  - query: "Which people are friends with PERSON_A?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Relation list, not temporal fact."
+  - query: "What caused EVENT_X?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Causal reasoning, not timestamp lookup."
+  - query: "Which rule blocks duplicate processing?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "System dependency, not temporal fact."
+  - query: "What reading list belongs to PERSON_A?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Personal fact list, not timestamp lookup."
+  - query: "Which items did PERSON_A purchase?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Personal fact list, not timestamp lookup."
+  - query: "Which preference is associated with PERSON_A?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Preference profile, not temporal fact."
+  - query: "What recommendation did you give before?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Previous chat recall, not temporal fact."
+  - query: "How many days separated EVENT_A from EVENT_B?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Duration calculation, not single timestamp."
+  - query: "Which event in memory happened earliest?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Sequence reasoning, not single timestamp."
 thresholds:
-  accept: 0.40
-  fallback: 0.32
+  accept: 0.4
+  fallback: 0.0
   margin: 0.04
   hard_negative_margin: 0.03
   hard_negative_penalty: 0.06
 calibration:
-  min_positive_examples: 30
-  min_hard_negatives: 15
+  min_positive_examples: 40
+  min_hard_negatives: 10
   expected_fallback_rate: 0.2

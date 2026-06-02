@@ -1,268 +1,110 @@
-schema_version: mem-router.backend-route-template.v1
-template_id: openviking.personal_fact_lookup.en.v2
-version: '2.1'
-status: enabled
+schema_version: "mem-router.backend-route-template.v1"
+template_id: "openviking.personal_fact_lookup.en.v2"
+version: "2.1"
+status: "enabled"
 target:
-  primary_backend_id: openviking_memory_backend
+  primary_backend_id: "openviking_memory_backend"
   secondary_backend_ids: []
 intent_family:
-  name: personal_fact_lookup
-  description: User asks for a specific fact, object, item, place, status, or attribute about themselves or a known person.
-semantic_card: 'Use this template when the query asks for a specific personal fact, attribute, status, or detail about someone:
-  what they own, what they do, their health, their identity, their interests, their possessions, or factual details from their
-  life. This includes both subjective experiences (how they felt) and objective facts (what car they drive, what books they
-  read, what they collect). Does NOT cover structured person-entity/person-event relations, temporal durations, or preference/habit
-  queries (those go to graph or preference_profile).
-
-  '
+  name: "personal_fact_lookup"
+  description: "User asks for a specific fact, object, item, place, status, or attribute about themselves or a known person."
+semantic_card: >-
+  Use this template when the query asks for a specific personal fact, attribute, status, or detail about someone: what they own, what they do, their health, their identity, their interests, their possessions, or factual details from their life. This includes both subjective experiences (how they felt) and objective facts (what car they drive, what books they read, what they collect). Does NOT cover structured person-entity/person-event relations, temporal durations, or preference/habit queries (those go to graph or preference_profile).
 query_prototypes:
-- What is the biggest stressor in someones life?
-- How does someone describe a personal experience?
-- What memory stands out from someones trip?
-- What challenge did someone face?
-- What accomplishment is someone proud of?
-- What personal goal is someone working toward?
-- What obstacle did someone overcome?
-- What lesson did someone learn?
-- What kind of CAR_X does PERSON_A drive?
-- What items did PERSON_A buy?
-- What books has PERSON_A read?
-- What does PERSON_A collect?
-- What are PERSON_A's health problems?
-- What is PERSON_A's identity?
-- What fields would PERSON_A pursue?
-- What did PERSON_A research?
-- What pets does PERSON_A have?
-- What hobbies does PERSON_A have?
-- What places has PERSON_A visited?
-- What activities has PERSON_A pursued?
-- What kind of interests do PERSON_A and PERSON_B share?
-- What wouldn't cause discomfort to PERSON_A?
-- What kind of places have PERSON_A checked out?
-- What kind of indoor activities has PERSON_A done?
-- What support does PERSON_A have?
-- What are PERSON_A's career goals?
-- What things has PERSON_A broken?
-- How many ITEM_X has PERSON_A owned?
-- Which hobby did PERSON_A take up?
-- Which country do PERSON_A and PERSON_B want to meet in?
-- What are PERSON_A and PERSON_B's favorite foods?
-- How does {person} describe their experience with {event}?
-- What stands out to {person} from their {experience}?
-- What challenge did {person} face during {activity}?
-- What accomplishment is {person} proud of from {time_period}?
-- What personal goal is {person} working toward in {area}?
-- What obstacle did {person} overcome in {situation}?
-- What lesson did {person} learn from {experience}?
-- How did {person} feel during {event}?
-- What kind of {category} does {person} have?
-- What {items} has {person} {action}?
-- What are {person}'s {attributes}?
-- What did {person} research about {topic}?
-- How does John describe the support he received during his journey?
-- What does Calvin say about the relief of someone whose car he fixed?
-- What passion does John mention connects him with people?
-- How did Sam describe the process of creating the painting?
-- What kind of car does Evan drive?
-- What items did Calvin buy?
-- What books has Tim read?
-- What are John's suspected health problems?
-- What fields would Caroline be likely to pursue in her education?
-- What did Caroline research?
-- What pets wouldn't cause any discomfort to Joanna?
-- What kind of interests do Joanna and Nate share?
-- Is it likely that Nate has friends besides Joanna?
-- What is the biggest stressor in Andrew's life besides not being able to hike frequently?
-- How does Jon describe using the clipboard with a notepad attached?
-- What does John say about his journey to becoming assistant manager?
-- What kind of places have Andrew and his girlfriend checked out around the city?
-- What kind of indoor activities has Andrew pursued with his girlfriend?
-- What stands out to James from his trip to Canada?
-- What challenge did Dave face when starting his car maintenance shop?
-- What accomplishment is Jolene proud of from her yoga practice?
-- What personal goal is Gina working toward with her designs?
-- What memory does Sam cherish from the art gala?
-- Why did someone put off doing a personal activity?
-- Why did someone sometimes delay practicing a habit?
-- What reason did someone give for postponing exercise?
-- What did someone say would help their sports performance?
-- What other activities could support someone's personal goal?
-- What items did PERSON_A buy in MONTH_YEAR?
-- Which bands has PERSON_A enjoyed listening to?
-- Which hobby did PERSON_A take up in MONTH_YEAR?
-- What kind of project was PERSON_A working on in TIME_PERIOD?
-- Which of PERSON_A's family and friends have passed away?
-- What are PERSON_A's career goals that are not related to ACTIVITY_X?
-- What kind of car does PERSON_A drive?
-- What kind of personal facts are known about PERSON_A?
+  - "What personal fact is known about PERSON_A?"
+  - "How does PERSON_A describe EXPERIENCE_X?"
+  - "What memory stands out from PERSON_A's EXPERIENCE_X?"
+  - "What challenge did PERSON_A face?"
+  - "What accomplishment is PERSON_A proud of?"
+  - "What personal goal is PERSON_A working toward?"
+  - "What obstacle did PERSON_A overcome?"
+  - "What lesson did PERSON_A learn from EXPERIENCE_X?"
+  - "How did PERSON_A feel during EVENT_X?"
+  - "What kind of ITEM_X does PERSON_A have?"
+  - "What items has PERSON_A bought?"
+  - "What books has PERSON_A read?"
+  - "What does PERSON_A collect?"
+  - "What health issues does PERSON_A have?"
+  - "What identity attribute is known about PERSON_A?"
+  - "What field of study would PERSON_A pursue?"
+  - "What topic did PERSON_A research?"
+  - "What pets does PERSON_A have?"
+  - "What hobbies does PERSON_A have?"
+  - "What places has PERSON_A visited?"
+  - "What activities has PERSON_A pursued?"
+  - "What support does PERSON_A have?"
+  - "What career goal does PERSON_A have?"
+  - "What object did PERSON_A break?"
+  - "How many ITEM_X has PERSON_A owned?"
+  - "Which hobby did PERSON_A take up?"
+  - "What kind of project has PERSON_A worked on?"
+  - "Which family members or friends has PERSON_A mentioned?"
+  - "What kind of vehicle does PERSON_A drive?"
+  - "What personal event did PERSON_A announce?"
+  - "What kind of online group did PERSON_A join?"
+  - "What did PERSON_A receive from RELATIVE_X?"
+  - "What photo did PERSON_A share?"
+  - "What recipe did PERSON_A mention?"
+  - "Where did PERSON_A grow up?"
+  - "What personal milestone did PERSON_A mention?"
+  - "What did PERSON_A eat for MEAL_X?"
+  - "What did PERSON_A say about ACTIVITY_X?"
+  - "What personal object is associated with PERSON_A?"
+  - "What personal achievement did PERSON_A mention?"
 hard_negatives:
-- query: When did Jon visit networking events for his store?
-  confusing_with_backend: temporal_memory_backend
-  reason: Temporal fact, not personal object/fact lookup
-- query: Jon 和 Gina 是什么关系？
-  confusing_with_backend: graph_memory_backend
-  reason: Relation query, not personal fact
-- query: Which week did Tim visit the UK for the Harry Potter Conference?
-  confusing_with_backend: temporal_memory_backend
-  reason: Temporal fact, not personal memory
-- query: How many days before I bought the iPhone 13 Pro did I attend the Holiday Market?
-  confusing_with_backend: temporal_memory_backend
-  reason: Duration comparison, not personal fact
-- query: How many days had passed between the Hindu festival of Holi and the Sunday mass at St. Mary's Church?
-  confusing_with_backend: temporal_memory_backend
-  reason: Duration comparison, not personal fact
-- query: When did Evan announce his marriage to his extended family?
-  confusing_with_backend: temporal_memory_backend
-  reason: Timeline fact, not personal object lookup
-- query: Which event happened first, the meeting with Rachel or the pride parade?
-  confusing_with_backend: temporal_memory_backend
-  reason: Sequence reasoning, not personal fact
-- query: How many months before my anniversary did Rachel get engaged?
-  confusing_with_backend: temporal_memory_backend
-  reason: Temporal duration, not personal fact
-- query: How long has PERSON_A been doing ACTIVITY_X?
-  confusing_with_backend: temporal_memory_backend
-  reason: Temporal duration query, not personal fact lookup
-- query: How long did it take PERSON_A to finish TASK_X?
-  confusing_with_backend: temporal_memory_backend
-  reason: Temporal duration, not personal attribute
-- query: How many months passed between EVENT_X and EVENT_Y?
-  confusing_with_backend: temporal_memory_backend
-  reason: Temporal interval, not personal fact
-- query: When was the last time PERSON_A did ACTION_X?
-  confusing_with_backend: temporal_memory_backend
-  reason: Temporal recency query, not personal fact
-- query: When did PERSON_A plan on doing ACTION_X?
-  confusing_with_backend: temporal_memory_backend
-  reason: Future plan timestamp, not personal fact
-- query: Which book did PERSON_A read in MONTH_YEAR?
-  confusing_with_backend: temporal_memory_backend
-  reason: Time-anchored fact lookup, the core is when not what
-- query: When did PERSON_A get their first ITEM_X?
-  confusing_with_backend: temporal_memory_backend
-  reason: Temporal acquisition query, not personal attribute
-- query: Jon 的朋友有哪些？
-  confusing_with_backend: graph_memory_backend
-  reason: Entity relation traversal
-- query: What caused split-brain dedupe?
-  confusing_with_backend: graph_memory_backend
-  reason: Causal multi-hop query
-- query: How confirm routing is balanced?
-  confusing_with_backend: graph_memory_backend
-  reason: System dependency query
-- query: What triggers rollback decisions?
-  confusing_with_backend: graph_memory_backend
-  reason: System dependency query
-- query: What is the total cost of my recently purchased headphones and the iPad?
-  confusing_with_backend: openviking_memory_backend
-  reason: Aggregation query, not single fact
-- query: Would Dave prefer working on a Dodge Charger or a Subaru Forester?
-  confusing_with_backend: openviking_memory_backend
-  reason: Preference comparison, not single fact
-- query: Can you suggest some activities that I can do in the evening?
-  confusing_with_backend: openviking_memory_backend
-  reason: Suggestion query, not factual lookup
-- query: Which book was John reading during his recovery from an ankle injury?
-  confusing_with_backend: graph_memory_backend
-  reason: Person-object relation, not subjective experience
-- query: What kind of tattoo does Audrey have on her arm?
-  confusing_with_backend: graph_memory_backend
-  reason: Person-attribute relation, not subjective experience
-- query: Does Dave's shop employ a lot of people?
-  confusing_with_backend: graph_memory_backend
-  reason: Organization relation, not subjective experience
-- query: Which city has 1.2 million residents?
-  confusing_with_backend: graph_memory_backend
-  reason: Entity-attribute relation, not subjective experience
-- query: What can tasks link to?
-  confusing_with_backend: graph_memory_backend
-  reason: Entity-entity relation, not subjective experience
-- query: Which API path starts all calls?
-  confusing_with_backend: graph_memory_backend
-  reason: System entity relation, not subjective experience
-- query: Which year did Jolene start practicing yoga?
-  confusing_with_backend: temporal_memory_backend
-  reason: Temporal fact, not subjective experience
-- query: What do PERSON_A and PERSON_B have in common?
-  confusing_with_backend: graph_memory_backend
-  reason: Two-person relation/commonality query, not single-person fact lookup.
-- query: Which places or events have PERSON_A and PERSON_B planned to meet at?
-  confusing_with_backend: graph_memory_backend
-  reason: Two-person relation/commonality query, not single-person fact lookup.
-- query: Which country do PERSON_A and PERSON_B want to meet in?
-  confusing_with_backend: graph_memory_backend
-  reason: Two-person relation/commonality query, not single-person fact lookup.
-- query: Do both PERSON_A and PERSON_B have pets?
-  confusing_with_backend: graph_memory_backend
-  reason: Two-person relation/commonality query, not single-person fact lookup.
-- query: What kind of interests do PERSON_A and PERSON_B share?
-  confusing_with_backend: graph_memory_backend
-  reason: Two-person relation/commonality query, not single-person fact lookup.
-- query: Where did PERSON_A move from 4 years ago?
-  confusing_with_backend: temporal_memory_backend
-  reason: Asks for origin location, not the time of move.
-- query: Who supports PERSON_A when they have a negative experience?
-  confusing_with_backend: temporal_memory_backend
-  reason: Asks for a person/supporter, not a timestamp. "when" is conditional.
-- query: What does PERSON_A say ACTIVITY_X has been great for?
-  confusing_with_backend: temporal_memory_backend
-  reason: Asks for benefit/reason, not a time.
-- query: Where did PERSON_A explore on a road trip last year?
-  confusing_with_backend: temporal_memory_backend
-  reason: Asks for location, not the time.
-- query: What did PERSON_A receive from their brother that brought back childhood memories?
-  confusing_with_backend: temporal_memory_backend
-  reason: Asks for a gift/item, not a time.
-- query: What significant event happened in PERSON_A's life towards the end of summer 2023?
-  confusing_with_backend: temporal_memory_backend
-  reason: Asks for event description, not the date/time.
-- query: What kind of online group did PERSON_A join?
-  confusing_with_backend: temporal_memory_backend
-  reason: Asks for group type, not join date.
-- query: When was the last time PERSON_A visited PLACE_X?
-  confusing_with_backend: temporal_memory_backend
-  reason: Temporal recency query, not personal fact.
-- query: What happened first, EVENT_A or EVENT_B?
-  confusing_with_backend: temporal_memory_backend
-  reason: Sequence reasoning, not personal fact.
-- query: How long did it take PERSON_A to finish TASK_X?
-  confusing_with_backend: temporal_memory_backend
-  reason: Temporal duration, not personal attribute.
-- query: When did PERSON_A first do ACTION_X?
-  confusing_with_backend: temporal_memory_backend
-  reason: First-occurrence timestamp, not personal fact.
-- query: How many days passed between EVENT_X and EVENT_Y?
-  confusing_with_backend: temporal_memory_backend
-  reason: Temporal interval, not personal fact.
-- query: What did PERSON_A share a photo of when mentioning unwinding at home?
-  confusing_with_backend: temporal_memory_backend
-  reason: Asks for photo subject, not timestamp.
-- query: How will PERSON_A share the recipe with the other person?
-  confusing_with_backend: temporal_memory_backend
-  reason: Asks for method, not time.
-- query: Where was the forest picture shared by PERSON_A on December 1, 2023 taken?
-  confusing_with_backend: temporal_memory_backend
-  reason: Asks for photo location, not date.
-- query: What is the topic of discussion between PERSON_A and PERSON_B on DATE?
-  confusing_with_backend: temporal_memory_backend
-  reason: Asks for topic, not time.
+  - query: "At what time did PERSON_A visit PLACE_X?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Temporal lookup, not personal fact lookup."
+  - query: "Which remembered event occurred first?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Temporal ordering, not personal fact lookup."
+  - query: "What was the month gap between EVENT_A and EVENT_B?"
+    confusing_with_backend: "temporal_memory_backend"
+    reason: "Duration comparison, not personal fact lookup."
+  - query: "Which connection exists between PERSON_A and PERSON_B?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Entity relation query, not single-person fact lookup."
+  - query: "Who are PERSON_A's friends?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Relation list, not single-person fact lookup."
+  - query: "Which organization includes PERSON_A?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Membership relation, not personal fact lookup."
+  - query: "Which common trait links PERSON_A and PERSON_B?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Shared relation query, not single-person fact lookup."
+  - query: "Which shared interests connect PERSON_A and PERSON_B?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Two-person shared-interest relation, not personal fact lookup."
+  - query: "Why did SYSTEM_FAILURE_X occur?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "System causal query, not personal fact lookup."
+  - query: "Which field keeps SYSTEM_A and SYSTEM_B synchronized?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "Technical dependency query, not personal fact lookup."
+  - query: "Can you suggest activities based on PREFERENCE_X?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Recommendation or aggregation request, not single fact lookup."
+  - query: "What did you recommend in our previous chat about TOPIC_X?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Previous chat recall, not personal fact lookup."
 query_spec:
-  search_mode: search
+  search_mode: "search"
   openviking:
-    context_type: memory
-    target_uri: viking://memories
+    context_type: "memory"
+    target_uri: "viking://memories"
     skip_intent_analysis: true
     typed_query_template:
-      intent: personal_fact_lookup
+      intent: "personal_fact_lookup"
       priority: 1
       target_directories: null
 thresholds:
   accept: 0.56
-  fallback: 0.46
+  fallback: 0.0
   margin: 0.04
   hard_negative_margin: 0.03
   hard_negative_penalty: 0.06
 calibration:
-  min_positive_examples: 35
-  min_hard_negatives: 15
+  min_positive_examples: 40
+  min_hard_negatives: 12
   expected_fallback_rate: 0.15

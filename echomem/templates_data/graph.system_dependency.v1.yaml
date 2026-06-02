@@ -2,133 +2,88 @@ schema_version: "mem-router.backend-route-template.v1"
 template_id: "graph.system_dependency.v1"
 version: "1.0"
 status: "enabled"
-
 target:
   primary_backend_id: "graph_memory_backend"
   secondary_backend_ids: []
-
 intent_family:
   name: "system_dependency_graph"
   description: "Technical architecture queries about dependencies, retries, dedupe, rollback, synchronization, rules, metrics, and system interactions."
-
-semantic_card: >
-  Use this template for technical queries where the answer depends on linked
-  system components, rules, dependencies, event flows, or cross-system state
-  rather than a single semantic memory snippet.
-
+semantic_card: >-
+  Use this template for technical queries where the answer depends on linked system components, rules, dependencies, event flows, or cross-system state rather than a single semantic memory snippet.
 query_prototypes:
-  # Generic system dependency questions
-  - "Which component depends on another component?"
-  - "Which field anchors cross-system synchronization?"
-  - "Which field links two systems together?"
+  - "Which component depends on COMPONENT_X?"
+  - "Which field synchronizes SYSTEM_A with SYSTEM_B?"
+  - "Which field links SERVICE_A to SERVICE_B?"
   - "Which identifier connects these services?"
-  - "Which rule controls this behavior?"
+  - "Which rule controls BEHAVIOR_X?"
   - "Which rule prevents duplicate processing?"
-  - "Which dependency blocks the workflow?"
-  - "Which dependency causes the rollback risk?"
-  - "Which service emits the event consumed downstream?"
-  - "Which upstream signal drives the downstream state?"
+  - "Which dependency blocks WORKFLOW_X?"
+  - "Which dependency creates rollback risk?"
+  - "Which service emits EVENT_X for a downstream consumer?"
+  - "Which upstream signal drives STATE_X?"
   - "What connects retry behavior to dedupe state?"
-  - "What prevents retry double-counting?"
-  - "What caused split-brain dedupe?"
-  - "How detect rules not behaving?"
-  - "How roll back without redeploy?"
-  - "Why can throughput look fine?"
-  - "What should missing IDs trigger?"
-  - "What inflated cart actions?"
-  - "Why are energy dates shifted?"
-  - "How confirm routing is balanced?"
-  # Slot-style technical dependency questions
-  - "Which FIELD_X anchors sync between SYSTEM_A and SYSTEM_B?"
-  - "Which RULE_X prevents duplicate EVENT_Y?"
-  - "How does SERVICE_A affect SERVICE_B?"
-  - "What dependency links COMPONENT_A to FAILURE_B?"
-  - "What should MISSING_FIELD_X trigger in SYSTEM_Y?"
-  - "How can TEAM_X detect RULE_Y not behaving?"
+  - "Which rule prevents retry double-counting?"
+  - "Which system condition creates split-brain dedupe?"
+  - "How can TEAM_X detect RULE_X failure?"
   - "How can SYSTEM_X roll back without redeploy?"
-  - "Why can METRIC_X look fine while ISSUE_Y exists?"
-  - "Which event flow connects INPUT_X to OUTPUT_Y?"
-  - "Which cross-system state explains RESULT_Y?"
-  # Benchmark-style short questions
-  - "Which field anchors cross-system sync?"
-  - "What prevents retry double-counting?"
-  - "What caused split-brain dedupe?"
-  - "How detect rules not behaving?"
-  - "Why can throughput look fine?"
-  - "How roll back without redeploy?"
-  - "What should missing IDs trigger?"
-  - "How confirm routing is balanced?"
-  - "What framing repeats across storage docs?"
-  - "What explains the storage consistency issue?"
-  - "Which two IDs must purchases include?"
-  - "What tags separate intent from tries?"
-  - "How define eligible sessions?"
-  - "What should dedupe survive under failure?"
-  - "Which IDs anchor a purchase record?"
-  - "What rules govern tag assignment?"
+  - "Why can METRIC_X look healthy while ISSUE_X remains?"
+  - "What should missing IDENTIFIER_X trigger?"
+  - "Which rule inflated repeated actions?"
+  - "Why are DATE_FIELD_X values shifted?"
+  - "How can routing balance be confirmed?"
+  - "What explains CONSISTENCY_ISSUE_X?"
+  - "Which two identifiers must RECORD_X include?"
+  - "Which tags separate SIGNAL_X from RETRY_X?"
+  - "How are eligible sessions defined?"
+  - "Which state must dedupe preserve during failure?"
+  - "Which identifiers anchor RECORD_X?"
+  - "What rules govern TAG_X assignment?"
   - "How are sessions marked eligible?"
-  - "What fields must a transaction include?"
-  - "Which identifiers tie orders to customers?"
-  - "What conditions separate valid from invalid attempts?"
-  - "How does the system classify retries versus new tries?"
-  - "What defines an eligible session in the pipeline?"
+  - "Which fields must RECORD_X include?"
+  - "Which identifiers tie RECORD_X to ENTITY_X?"
+  - "What conditions separate valid attempts from invalid attempts?"
+  - "How does SYSTEM_X classify retries versus new attempts?"
   - "Which tags distinguish intent from noise?"
   - "What fields survive dedupe across regions?"
-  - "Which IDs survive system failure?"
-  - "What rules determine purchase validity?"
-  - "How are purchase IDs validated?"
-  - "What tag logic routes requests correctly?"
-  - "Which session criteria trigger acceptance?"
-  - "What fields link purchases to identities?"
   - "Which rules guard against duplicate counts?"
-  - "What conditions make a session eligible?"
-  - "Which identifiers must every purchase carry?"
-  - "What tag mapping separates categories?"
-  - "How does dedupe decide what to keep?"
-  - "Which fields define a valid transaction?"
-  - "What rules control retry classification?"
-  - "Which session attributes determine eligibility?"
-
 hard_negatives:
-  # Temporal: time-focused queries
-  - query: "When did PERSON_A buy ITEM_X?"
+  - query: "At what time did PERSON_A buy ITEM_X?"
     confusing_with_backend: "temporal_memory_backend"
     reason: "Personal timestamp lookup, not system dependency graph."
-  - query: "Which task happened first?"
+  - query: "Which remembered task occurred first?"
     confusing_with_backend: "temporal_memory_backend"
     reason: "Temporal order question, not technical dependency."
-  - query: "How many days ago did EVENT_X happen?"
+  - query: "How many days ago did EVENT_X occur?"
     confusing_with_backend: "temporal_memory_backend"
-    reason: "Duration/time lookup, not dependency graph."
-  # OpenViking: subjective semantic or personal fact
-  - query: "What is PERSON_A's preference?"
+    reason: "Duration lookup, not dependency graph."
+  - query: "Which preference belongs to PERSON_A?"
     confusing_with_backend: "openviking_memory_backend"
     reason: "Preference memory, not dependency graph."
-  - query: "Can you remind me what we discussed about a recipe?"
+  - query: "Can you remind me about TOPIC_X from our previous chat?"
     confusing_with_backend: "openviking_memory_backend"
-    reason: "Previous chat semantic recall, not technical graph."
-  # Entity-relation: same backend (graph), kept for template-level discrimination
-  - query: "What is the relationship between PERSON_A and PERSON_B?"
+    reason: "Previous chat recall, not technical graph."
+  - query: "Which person-to-person relation links PERSON_A and PERSON_B?"
     confusing_with_backend: "graph_memory_backend"
     reason: "Entity relation query, not system dependency."
-  - query: "Who worked with PERSON_A?"
+  - query: "Who had a collaboration link with PERSON_A?"
     confusing_with_backend: "graph_memory_backend"
     reason: "Person relation lookup, not technical dependency."
-  - query: "Which organization does PERSON_A belong to?"
+  - query: "Which organization is PERSON_A part of?"
     confusing_with_backend: "graph_memory_backend"
     reason: "Membership relation, not system dependency."
-  - query: "What did PERSON_A discuss with PERSON_B?"
+  - query: "Which discussion topic linked PERSON_A and PERSON_B?"
     confusing_with_backend: "graph_memory_backend"
     reason: "Discussion relation, not system dependency."
-
+  - query: "Which technical dependency produced OUTCOME_X?"
+    confusing_with_backend: "graph_memory_backend"
+    reason: "General causal question, not technical dependency lookup."
 thresholds:
   accept: 0.56
-  fallback: 0.50
+  fallback: 0.0
   margin: 0.04
   hard_negative_margin: 0.03
   hard_negative_penalty: 0.06
-
 calibration:
-  min_positive_examples: 40
-  min_hard_negatives: 15
-  expected_fallback_rate: 0.20
+  min_positive_examples: 35
+  min_hard_negatives: 10
+  expected_fallback_rate: 0.2

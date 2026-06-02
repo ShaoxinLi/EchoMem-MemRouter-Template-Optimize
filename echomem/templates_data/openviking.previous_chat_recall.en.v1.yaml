@@ -2,85 +2,66 @@ schema_version: "mem-router.backend-route-template.v1"
 template_id: "openviking.previous_chat_recall.en.v1"
 version: "1.0"
 status: "enabled"
-
 target:
   primary_backend_id: "openviking_memory_backend"
   secondary_backend_ids: []
-
 intent_family:
   name: "previous_chat_recall"
   description: "User asks MemRouter/OpenViking to recall something mentioned, recommended, configured, or discussed in a previous conversation."
-
-semantic_card: >
-  Use this template when the query explicitly references a previous
-  conversation, prior recommendation, earlier instruction, remembered
-  preference, or something the assistant previously said. This template is
-  routed to OpenViking because it depends on general conversational memory
-  rather than graph relations or temporal sequence stores.
-
+semantic_card: >-
+  Use this template when the query explicitly references a previous conversation, prior recommendation, earlier instruction, remembered preference, or something the assistant previously said. This template is routed to OpenViking because it depends on general conversational memory rather than graph relations or temporal sequence stores.
 query_prototypes:
-  # Abstract layer - previous conversation recall
   - "Remind me what you recommended before."
   - "What did you suggest in our previous conversation?"
   - "What did we discuss last time?"
-  - "Can you recall what I asked you earlier?"
+  - "Can you recall what I asked earlier?"
   - "What did I tell you before?"
   - "What did you say I should use?"
   - "Do you remember the option you recommended?"
   - "Can you remind me of the detail from our earlier chat?"
-  - "I'm looking back at our previous conversation."
-  - "I'm going back to something we discussed earlier."
-
-  # Slot layer - remembered recommendation or configuration
-  - "Can you remind me what {item} you recommended for {task}?"
-  - "What type of {thing} did you specifically recommend?"
-  - "Which {tool_or_material} did you suggest for {project}?"
-  - "What setting did you tell me to use for {workflow}?"
-  - "What was the recommendation from our previous chat about {topic}?"
-  - "What did you recommend when we talked about {recipe_or_project}?"
-  - "Can you remind me what {ingredient_or_material} you suggested?"
-  - "What did you say was best for {activity} last time?"
-
-  # Benchmark-derived layer
-  - "I'm looking back at our previous conversation about the Seco de Cordero recipe from Ancash."
-  - "You mentioned using a light or medium-bodied beer; what type of beer did you recommend?"
-  - "I'm going back to our previous conversation about DIY home decor projects using recycled materials."
-  - "Can you remind me what sealant you recommended for the newspaper flower vase?"
-  - "What beer did you specifically recommend for the recipe?"
-  - "What sealant did you recommend for the recycled newspaper vase?"
-
+  - "I am looking back at our previous conversation."
+  - "I am returning to something we discussed earlier."
+  - "Can you remind me what ITEM_X you recommended for TASK_X?"
+  - "What option did you specifically recommend?"
+  - "Which ITEM_X did you suggest for PROJECT_X?"
+  - "What setting did you tell me to use for WORKFLOW_X?"
+  - "What was the recommendation from our previous chat about TOPIC_X?"
+  - "What did you recommend when we talked about TOPIC_X?"
+  - "Can you remind me what ITEM_X you suggested?"
+  - "What did you say was best for ACTIVITY_X last time?"
+  - "What option did you recommend for TOPIC_X before?"
+  - "What detail from the earlier conversation should I use now?"
 hard_negatives:
-  - query: "When did Jon visit networking events for his store?"
+  - query: "On what date did PERSON_A attend EVENT_X?"
     confusing_with_backend: "temporal_memory_backend"
     reason: "Timeline fact, not previous chat recall."
-  - query: "Which event happened first, the pride parade or the meeting with Rachel?"
+  - query: "Which prior event occurred earliest?"
     confusing_with_backend: "temporal_memory_backend"
     reason: "Temporal ordering, not previous chat recall."
-  - query: "How long did I wait for the decision on my application?"
+  - query: "What was PERSON_A's waiting duration for DECISION_X?"
     confusing_with_backend: "temporal_memory_backend"
     reason: "Duration lookup, not previous chat recall."
-  - query: "What relationship does Jon have with Gina?"
+  - query: "What relation exists between PERSON_A and PERSON_B?"
     confusing_with_backend: "graph_memory_backend"
     reason: "Entity relation query, not previous chat recall."
-  - query: "Which book was John reading during recovery?"
-    confusing_with_backend: "graph_memory_backend"
-    reason: "Person-object relation, not previous chat recall."
-  - query: "What caused split-brain dedupe?"
+  - query: "Which book was PERSON_A reading during EVENT_X?"
+    confusing_with_backend: "openviking_memory_backend"
+    reason: "Personal fact lookup, not previous chat recall."
+  - query: "Which cause explains SYSTEM_FAILURE_X?"
     confusing_with_backend: "graph_memory_backend"
     reason: "Causal dependency query, not previous chat recall."
-  - query: "Which API path starts all calls?"
+  - query: "Which endpoint begins REQUEST_X?"
     confusing_with_backend: "graph_memory_backend"
-    reason: "System entity relation, not previous chat recall."
-  - query: "What time do I usually go to the gym?"
+    reason: "System dependency query, not previous chat recall."
+  - query: "What is PERSON_A's usual exercise time?"
     confusing_with_backend: "openviking_memory_backend"
-    reason: "Routine/profile query, not previous chat recall."
-  - query: "Can you suggest new recipes for next week?"
+    reason: "Routine profile query, not previous chat recall."
+  - query: "Can you suggest recipes for TIME_PERIOD_X?"
     confusing_with_backend: "openviking_memory_backend"
     reason: "Recommendation request, not previous chat recall."
-  - query: "What are John's goals for his basketball career?"
+  - query: "What goal does PERSON_A have for SPORT_X?"
     confusing_with_backend: "openviking_memory_backend"
-    reason: "Preference/profile query, not previous chat recall."
-
+    reason: "Profile query, not previous chat recall."
 query_spec:
   search_mode: "search"
   openviking:
@@ -91,15 +72,13 @@ query_spec:
       intent: "previous_chat_recall"
       priority: 1
       target_directories: null
-
 thresholds:
   accept: 0.65
-  fallback: 0.56
+  fallback: 0.0
   margin: 0.04
   hard_negative_margin: 0.03
   hard_negative_penalty: 0.06
-
 calibration:
   min_positive_examples: 20
   min_hard_negatives: 10
-  expected_fallback_rate: 0.20
+  expected_fallback_rate: 0.2

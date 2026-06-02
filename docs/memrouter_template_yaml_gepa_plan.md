@@ -1,255 +1,356 @@
 # MemRouter Template YAML GEPA Matcher-Only 实验方案
 
-## 1. 实验背景与目标
+## 1. 实验目标
 
-MemRouter 的任务是把用户问题路由到合适的 memory backend。当前 routing 链路中，matcher 会读取一组 YAML templates，并根据 `query_prototypes`、`hard_negatives` 和 threshold fields 预测 backend。
+MemRouter 的 routing 任务是把用户问题路由到合适的 memory backend。本实验固定 matcher 代码和 matcher 配置，只优化 matcher 使用的 YAML templates。
 
-本实验把这组 YAML templates 作为唯一可优化资产。GEPA 在每轮迭代中读取当前 templates、routing 结果和 feedback，然后直接生成一组新的完整 YAML templates。matcher 代码和 matcher 配置在整个实验中保持不变。
-
-本实验验证的问题是：
+本实验要验证的问题是：
 
 ```text
-在固定 matcher 代码和 matcher 配置的前提下，GEPA 直接优化 Template Bundle，是否能提升 matcher-only routing 效果？
+在固定 matcher 代码和 matcher 配置的前提下，GEPA 优化 Template Bundle 是否能提升 matcher-only routing 效果？
 ```
 
-本实验的输入样本是：
+每条样本包含：
 
 ```text
 <question, expected_backend>
 ```
 
-默认数据来自 LoCoMo routing labels。每条样本包含一个 question 和一个人工标注的 expected backend。
+实验只评估 routing，不评估最终答案质量。当 matcher 没有接受任何 backend 时，结果记为 `No Decision`，本实验不会调用 LLM fallback。
 
-本实验的核心输出是：
-
-```text
-Selected 是否在 val / test 上优于 Initial
-```
-
-本实验只评估 routing，不评估端到端答案质量。当 matcher 没有接受任何 backend 时，记录为 `No Decision`，不会调用 LLM fallback。
+最终结果以 `Selected` 相比 `Initial` 在 `val set` 和 `test set` 上的指标变化为准。
 
 ## 2. 术语
 
 | 术语 | 定义 |
-|---|---|
-| `GEPA` | 用 score 和 feedback 驱动文本资产迭代优化的优化器。本实验中，GEPA 的输出是 Proposal。 |
-| `Backend` | MemRouter 可选择的路由目标，例如 `openviking_memory_backend`、`graph_memory_backend`、`temporal_memory_backend`。 |
-| `Matcher` | 固定代码模块，读取 Template Bundle 并为 question 预测 backend。 |
-| `Template Bundle` | matcher 消费的一组 YAML templates。 |
+| --- | --- |
+| `GEPA` | 用 score 和 feedback 驱动文本资产迭代优化的优化器。本实验中，GEPA 负责选择 Parent、生成 Proposal、评估 Candidate 并选择 Selected。 |
+| `Backend` | MemRouter 的路由目标，例如 `openviking_memory_backend`、`graph_memory_backend`、`temporal_memory_backend`。 |
+| `Matcher` | 固定代码模块，读取 Template Bundle 后对 question 进行 backend routing。 |
+| `Template Bundle` | matcher 消费的一组 YAML template 文件。 |
 | `Initial` | 实验开始前的原始 Template Bundle。 |
-| `Parent` | 当前轮被 GEPA 修改的 Template Bundle。第一轮 Parent 等于 Initial。 |
-| `Proposal` | GEPA 基于 Parent 生成的新 Template Bundle，格式为完整 YAML 文件集合。 |
-| `Candidate` | 通过 minibatch 比较并进入候选池的 Proposal。 |
-| `Selected` | 预算结束后，在 val set 上 `GEPA Score` 最高的 Candidate。 |
-| `Minibatch` | 每轮 GEPA 用于生成 feedback 和比较 Parent / Proposal 的小批量样本。 |
-| `train set` | 用于 GEPA 生成 feedback 和采样 minibatch 的训练集。 |
+| `Parent` | 当前 GEPA 轮次被修改的完整 Template Bundle。第一轮 Parent 等于 Initial。 |
+| `Proposal LLM` | 根据 Parent 和 Feedback 生成 Complete Editable Fields Bundle 的 LLM。 |
+| `Complete Editable Fields Bundle` | Proposal LLM 的原始输出。它为 Parent 中每个 template 文件输出完整的 `query_prototypes`、`hard_negatives`、`thresholds`，不输出不可编辑字段。 |
+| `Proposal` | 运行时代码把 Complete Editable Fields Bundle 合并回 Parent 后得到的完整 Template Bundle。 |
+| `Candidate` | 通过 Minibatch 比较并进入候选池的 Proposal。 |
+| `Selected` | 预算结束后，在 val set 上 GEPA Score 最高的 Candidate。 |
+| `Minibatch` | 每轮 GEPA 用于生成 feedback 和比较 Parent / Proposal 的一批训练样本。 |
+| `train set` | 用于生成 feedback 和采样 Minibatch 的训练集。 |
 | `val set` | 用于评估 Candidate 并选择 Selected 的验证集。 |
 | `test set` | Selected 固定后才使用的最终评估集。 |
 | `expected_backend` | 样本的人工标注 backend。 |
-| `predicted_backend` | matcher 对 question 输出的 backend。 |
-| `Matcher Result` | matcher 对样本的原始 routing 输出，包括 predicted backend、template ranking、backend scores、matched template 和是否 No Decision。 |
-| `No Decision` | matcher 没有接受任何 backend。本实验不会在这种情况下调用 LLM fallback。 |
-| `LLM fallback` | matcher 无法决策时调用 LLM 兜底判断 backend 的路径。本实验禁用该路径。 |
+| `predicted_backend` | matcher 输出的 primary backend；如果没有接受任何 backend，则为 `No Decision`。 |
+| `predicted_backends` | matcher 接受的 backend 列表；multi-backend accept 时包含多个 backend。 |
+| `Matcher Result` | matcher 对样本的原始 routing 输出，包括 ranking、scores、matched template、route method 和是否正确。 |
 | `Deterministic Feedback` | 固定代码基于 Matcher Result 和 expected backend 生成的结构化诊断。 |
-| `LLM Feedback` | LLM 基于 Deterministic Feedback 生成的泛化修改建议。它不参与打分。 |
-| `Validator` | 检查 Proposal 是否合法、是否可被 matcher 消费的固定程序。 |
+| `LLM Feedback` | LLM 基于 Deterministic Feedback 生成的泛化修改建议。 |
+| `Validator` | 固定程序，检查 Proposal 是否满足输出契约、schema、不可变字段和 matcher 可运行性。 |
 | `Validator Feedback` | Validator 失败时生成的结构化错误反馈。 |
-| `Generation Prompt` | 指导 GEPA 根据 Parent 和 feedback 生成 Proposal 的指令。 |
-| `Output Contract` | Proposal 必须满足的输出格式和字段约束。 |
+| `Generation Prompt` | Proposal LLM 的完整指令，包含任务目标、Parent、Feedback 和 Output Contract。 |
+| `Output Contract` | Complete Editable Fields Bundle 必须满足的输出格式和字段约束。 |
 | `GEPA Score` | evaluator 计算的优化目标，用于比较 Parent、Proposal 和 Candidate。 |
-| `num_threads` | GEPA / runner 用于并行执行 metric calls 的 worker 数。默认值为 4。 |
-| `parallel_val_eval` | 使用 `num_threads` 并行评估 val set 的设置。 |
-| `question_embedding_cache` | 以 question 和 embedding config 为 key 的 embedding 缓存。 |
-| `template_embedding_cache` | 以 Template Bundle hash 和 embedding config 为 key 的 template embedding 缓存。 |
-| `candidate_eval_cache` | 以 Candidate hash、split 和 evaluator config 为 key 的评估结果缓存。 |
-| `Run Resume` | 从已有 run 目录恢复实验状态的能力。 |
+| `No Decision` | matcher 没有接受任何 backend。 |
+| `LLM fallback` | matcher 无法决策时由 LLM 兜底判断 backend 的路径。本实验禁用该路径。 |
 
 ## 3. 实验边界
 
-本实验明确不做：
+本实验固定以下内容：
 
-- 不优化 matcher 代码。
-- 不优化 matcher 配置。
-- 不设置 LLM fallback；No Decision 会直接进入指标统计。
+- matcher 代码。
+- matcher 配置。
+- backend 集合。
+- template 文件集合。
+- `template_id`、`target`、`query_spec` 等不可编辑字段。
+
+本实验只允许优化以下字段：
+
+- `query_prototypes`
+- `hard_negatives`
+- `thresholds`
+
+本实验不做：
+
+- 不调用 LLM fallback。
 - 不使用 answer judge。
-- 不让 LLM Feedback 参与打分或接受判断。
+- 不让 LLM Feedback 参与打分。
 - 不让 test set 参与 GEPA 生成、选择或 early stop。
-- 不使用 patch 或 edit JSON 作为 Proposal 输出格式。
+- 不让 Proposal LLM 输出完整 Template Bundle。
+- 不使用 JSON 编辑指令或增量变更格式。
 
 ## 4. 总体流程
 
-实验由 data preparation、GEPA optimization、final evaluation 三个阶段组成。
-
 ```text
-1. 固定 matcher 代码和 matcher 配置。
-2. 准备 train / val / test split。
-3. 使用 Initial 跑完整 train set，建立 sampling buckets。
-4. 使用 Initial 跑 val set，初始化 Candidate pool。
+1. 读取 train / val / test 数据。
+2. 读取 Initial Template Bundle。
+3. 用 Initial 评估 train / val / test。
+4. 用 Initial train results 构建 bucket_random 的 initial sampling buckets。
 5. GEPA 迭代：
    5.1 选择 Parent。
-   5.2 从 sampling buckets 中抽取 minibatch。
-   5.3 使用 Parent 跑 minibatch，得到 Matcher Result。
-   5.4 evaluator 生成 GEPA Score 和 Deterministic Feedback。
-   5.5 LLM 基于 Deterministic Feedback 生成 LLM Feedback。
-   5.6 GEPA 基于 Parent、feedback 和 Generation Prompt 生成 Proposal。
-   5.7 Validator 检查 Proposal。
-       - 如果失败：Proposal 得分为 0，Validator Feedback 进入下一轮。
-       - 如果通过：继续下一步。
-   5.8 使用 Proposal 跑同一个 minibatch。
-   5.9 如果 Proposal 的 GEPA Score 高于 Parent，则跑 val set 并加入 Candidate pool。
-6. 预算结束后，选择 val set 上 GEPA Score 最高的 Candidate 作为 Selected。
-7. 使用 test set 评估 Initial 和 Selected。
+   5.2 sampler 采样 Minibatch。
+   5.3 使用 Parent 跑 Minibatch，得到 Matcher Result。
+   5.4 生成 Deterministic Feedback。
+   5.5 LLM Feedback 只基于 Deterministic Feedback 生成泛化建议。
+   5.6 Proposal LLM 基于 Parent 和 Feedback 输出 Complete Editable Fields Bundle。
+   5.7 运行时代码把 Complete Editable Fields Bundle 合并回 Parent，得到 Proposal。
+   5.8 Validator 检查 Proposal。
+       - 如果失败：Proposal 得分为 0，不进入 Candidate pool。
+       - 如果通过：继续评估。
+   5.9 使用 Proposal 跑同一个 Minibatch。
+   5.10 如果 Proposal Minibatch GEPA Score 高于 Parent，则评估 val set，并把 Proposal 加入 Candidate pool。
+   5.11 bucket_random 模式下，达到刷新条件时用当前 best Candidate 重新评估完整 train set 并重建 buckets。
+6. 预算或 stopper 触发后，选择 val set GEPA Score 最高的 Candidate 作为 Selected。
+7. 使用 Selected 评估 val / test。
 8. 输出 Selected vs Initial 报告。
 ```
 
 关键约束：
 
-- 每轮 feedback 必须基于当前 Parent 的最新 Matcher Result。
-- Proposal 和 Parent 必须在同一个 minibatch 上比较。
-- test set 只在 Selected 固定后使用一次。
-- Selected 只由 val set 选择，不能由 test set 选择。
+- Parent 和 Proposal 必须在同一个 Minibatch 上比较。
+- test set 只在 Selected 固定后使用。
+- Selected 只由 val set 选择。
+- LLM Feedback 不直接访问 Matcher Result；它只接收 Deterministic Feedback。
 
-## 5. GEPA 输入
+## 5. Matcher Route Decision
 
-每轮 GEPA 输入包含：
+Matcher 先生成 template ranking 和 backend ranking，再做 route decision。
 
-| 输入 | 定义 |
-|---|---|
-| `Generation Prompt` | 说明任务、允许修改范围、输出格式和禁止事项。 |
-| `Output Contract` | Proposal 必须满足的格式与合法性约束。 |
-| `Parent` | 当前轮完整 YAML Template Bundle。 |
-| `Minibatch Cases` | 当前轮样本，格式为 `<question, expected_backend>`。 |
-| `Deterministic Feedback` | 当前 Parent 在 minibatch 上的结构化诊断。 |
-| `LLM Feedback` | 基于 Deterministic Feedback 的泛化修改建议。 |
-| `Validator Feedback` | 最近一次 Proposal 非法时的错误反馈；如果最近一次 Proposal 合法则为空。 |
-| `Parent Val Summary` | Parent 最近一次在 val set 上的整体指标摘要。 |
-| `Initial Summary` | Initial 在 train / val 上的静态指标摘要。 |
+### 5.1 单 backend accept
 
-推荐输入优先级：
+如果第一名 backend 满足：
 
 ```text
-1. Output Contract
-2. Validator Feedback
-3. Parent
-4. Deterministic Feedback
-5. LLM Feedback
-6. Parent Val Summary
-7. Initial Summary
-8. Minibatch Cases
+best.score >= best_template.thresholds.accept
+best.score - second.score >= best_template.thresholds.margin
 ```
 
-`Parent Val Summary` 和 `Initial Summary` 只传压缩摘要，不传完整样本。
+则接受第一名 backend：
 
-## 6. Proposal 输出
+```text
+route_method = template_embedding
+predicted_backends = [best.backend_id]
+predicted_backend = best.backend_id
+```
 
-GEPA 直接输出 `Proposal`，即完整 YAML Template Bundle。
+### 5.2 Multi-backend accept
 
-不使用 patch。
-不使用 edit JSON。
-不要求 GEPA 描述修改理由。
+如果第一名和第二名属于不同 backend，且满足：
+
+```text
+best.score >= best_template.thresholds.accept
+second.score >= second_template.thresholds.accept
+best.score - second.score < best_template.thresholds.margin
+second.score / best.score >= 0.85
+```
+
+则接受两个 backend：
+
+```text
+route_method = template_embedding_multi_backend
+predicted_backends = [best.backend_id, second.backend_id]
+predicted_backend = best.backend_id
+```
+
+由于样本标签只有一个 `expected_backend`，`is_correct` 仍按 `predicted_backend == expected_backend` 计算。
+
+### 5.3 No Decision
+
+如果不满足单 backend accept 或 multi-backend accept，则输出：
+
+```text
+route_method = no_decision
+predicted_backend = No Decision
+predicted_backends = []
+```
+
+`thresholds.fallback` 当前不驱动 LLM fallback。本实验中的 `No Decision` 直接进入指标统计。
+
+## 6. GEPA 输入
+
+每轮 Proposal LLM 的输入由 `Generation Prompt` 组织，包含：
+
+| 输入 | 说明 |
+| --- | --- |
+| `Generation Prompt` | 任务目标、编辑原则和输出格式。 |
+| `Output Contract` | Complete Editable Fields Bundle 的硬性输出规则，嵌入 Generation Prompt。 |
+| `Parent Template Bundle` | 当前轮完整 Parent，放在 `CURRENT TEMPLATE BUNDLE START/END` 区块中。 |
+| `Feedback` | JSON 字符串，包含 Validator Feedback、Deterministic Feedback、LLM Feedback、Parent Val Summary、Initial Summary。 |
+
+`Feedback` 的结构是：
+
+```json
+{
+  "validator_feedback": null,
+  "deterministic_feedback": {},
+  "llm_feedback": {},
+  "parent_val_summary": {},
+  "initial_summary": {
+    "train": {},
+    "val": {}
+  }
+}
+```
+
+`Minibatch Cases` 不作为独立区块输入 Proposal LLM；它们以样本级信息进入 `deterministic_feedback.case_feedback`。
+
+`Parent Val Summary` 和 `Initial Summary` 是压缩指标摘要，不包含完整样本列表。
+
+## 7. Proposal 输出与合并
+
+Proposal LLM 必须输出 `Complete Editable Fields Bundle`。
+
+`Complete Editable Fields Bundle` 的定义是：
+
+```text
+为 Parent 中每个 template 文件输出完整修改后的可编辑字段，
+且只输出 query_prototypes、hard_negatives、thresholds。
+```
+
+每个文件 section 必须满足：
+
+```yaml
+# FILE: <template-file-name>.yaml
+query_prototypes:
+  - "..."
+hard_negatives:
+  - query: "..."
+    confusing_with_backend: "..."
+    reason: "..."
+thresholds:
+  accept: 0.0
+  fallback: 0.0
+  margin: 0.0
+  hard_negative_margin: 0.0
+  hard_negative_penalty: 0.0
+```
 
 输出要求：
 
-- 输出完整 YAML 文件内容。
-- 保留 Parent 中的全部 template。
-- 保持 template 顺序稳定。
-- 保持 YAML 可解析。
-- 不输出 Markdown fence。
-- 不输出解释文本。
-- 不复制 train query 原文作为 prototype。
+- 必须包含 Parent 中每个 template 文件。
+- 每个文件必须包含完整的 `query_prototypes`、`hard_negatives`、`thresholds`。
+- 不允许只输出新增项、删除项或部分字段值。
+- 不允许省略未修改文件。
+- 不允许省略未修改字段。
+- 不允许新增或删除 template 文件。
+- 不允许输出 Markdown fence 或解释文本。
+- 不允许复制当前 Minibatch 的 exact question 到 `query_prototypes`。
+- 不允许复制当前 Minibatch 的 exact question 到 `hard_negatives.query`。
+- 每条 `hard_negatives` 必须包含 `query`、`confusing_with_backend`、`reason`。
 
-允许修改的字段：
+运行时代码会把 Complete Editable Fields Bundle 合并回 Parent：
 
-- `query_prototypes`
-- `hard_negatives`
-- 明确列入白名单的 threshold fields，例如 `accept_threshold`、`fallback_threshold`、`margin`
+- `query_prototypes`、`hard_negatives`、`thresholds` 来自 Proposal LLM 输出。
+- `schema_version`、`template_id`、`version`、`status`、`target`、`intent_family`、`semantic_card`、`query_spec`、`calibration` 等不可编辑字段来自 Parent。
+- 如果 Proposal LLM 误输出不可编辑字段，合并时不会采纳。
+- 如果输出不满足 Complete Editable Fields Bundle 契约，合并结果会保留原始输出，并由 Validator 生成 `proposal_output_contract_error`。
 
-说明：如果现有 YAML 中保留 `fallback_threshold` 这个字段名，它只表示 matcher 的阈值字段，不表示本实验存在 LLM fallback。
-
-禁止修改的字段：
-
-- `template_id`
-- `target_backend`
-- `query_spec`
-- backend 名称
-- template ownership
-- matcher 不消费的结构字段
-
-## 7. Validator
+## 8. Validator
 
 Validator 是 Proposal 进入 matcher 前的硬门槛。
 
 Validator 检查：
 
-- YAML 可解析。
-- Template Bundle 中的 template 数量与 Parent 一致。
-- 每个 `template_id` 与 Parent 一致。
-- 每个 `target_backend` 与 Parent 一致。
-- `query_spec` 与 Parent 一致。
-- 只修改白名单字段。
-- `query_prototypes` 和 `hard_negatives` 是字符串列表。
-- 单条文本长度、列表长度和总文本增长量不超过上限。
-- threshold fields 是数值，并落在合法范围。
+- Template Bundle 可解析。
+- 文件集合必须与 Initial 一致。
+- 每个 template 可通过 schema 校验。
+- `template_id`、`target`、`query_spec` 必须与 Initial 一致。
+- 除 `query_prototypes`、`hard_negatives`、`thresholds` 以外的字段必须与 Initial 一致。
+- `query_prototypes` 必须是字符串列表。
+- `hard_negatives` 必须是对象列表。
+- 每条 `hard_negatives` 必须包含 `query`、`confusing_with_backend`、`reason`。
+- `query_prototypes` 单条长度不超过 240 字符。
+- `hard_negatives.query` 单条长度不超过 240 字符。
+- 相对 Parent 新增的 `query_prototypes` 不得 exact copy 当前 Minibatch question。
+- 相对 Parent 新增的 `hard_negatives.query` 不得 exact copy 当前 Minibatch question。
+- `thresholds` 中每个数值必须在 `[0, 1]`。
 - Template Bundle 可被 template loader 加载。
-- matcher 可基于 Proposal 初始化。
-- smoke routing 能跑通少量样本。
+- matcher 可基于 Proposal 初始化并跑通 smoke cases。
 
-当 Validator 失败：
+当前 Validator 不限制 `query_prototypes` 或 `hard_negatives` 的新增数量和总数量。
+
+Validator 失败时：
 
 ```text
 Proposal score = 0
 Proposal 不进入 Candidate pool
-不运行 matcher evaluation
-Validator Feedback 进入下一轮 GEPA 输入
+Validator Feedback 进入下一轮 Feedback
 ```
 
-`Validator Feedback` 示例：
+Validator Feedback 示例：
 
 ```json
 {
   "validator_status": "failed",
   "errors": [
     {
-      "type": "immutable_field_changed",
-      "template_id": "graph.entity_relation.v1",
-      "field": "target_backend",
-      "message": "target_backend must be identical to Parent."
-    },
-    {
-      "type": "yaml_parse_error",
-      "message": "Invalid indentation near line 42."
+      "type": "missing_required_field",
+      "message": "Missing required field 'confusing_with_backend' at 'hard_negatives.5.confusing_with_backend'.",
+      "template_id": "temporal.sequence_reasoning.v1",
+      "field": "hard_negatives",
+      "filename": "temporal.sequence_reasoning.v1.yaml",
+      "path": "hard_negatives.5.confusing_with_backend",
+      "missing_field": "confusing_with_backend",
+      "item_index": 5
     }
   ],
   "required_fix": [
-    "Return complete YAML only.",
-    "Keep template_id, target_backend, and query_spec unchanged.",
-    "Only modify query_prototypes, hard_negatives, and allowed threshold fields."
+    "Return a Complete Editable Fields Bundle only, with one '# FILE: <name>.yaml' marker for every Parent template file.",
+    "Every file section must include complete query_prototypes, hard_negatives, and thresholds fields.",
+    "Do not output template_id, target, query_spec, or any non-whitelisted fields."
   ]
 }
 ```
 
-## 8. Feedback 设计
+## 9. Feedback
 
-### 8.1 串行关系
-
-本实验采用串行 feedback：
+Feedback 流程是：
 
 ```text
-Matcher Result
--> Deterministic Feedback
--> LLM Feedback
--> GEPA
+Matcher Result -> Deterministic Feedback -> LLM Feedback -> GEPA
 ```
 
-串行关系的含义是：固定代码先把 Matcher Result 归一化为 Deterministic Feedback，LLM 再基于 Deterministic Feedback 生成泛化建议。LLM 不直接重做 evaluator 判断。
+### 9.1 Matcher Result
 
-LLM Feedback 可以读取少量 compact Matcher Result 证据，但它的主输入是 Deterministic Feedback。
+Matcher Result 是样本级原始 routing 输出。核心字段包括：
 
-### 8.2 Deterministic Feedback
+- `case_id`
+- `question`
+- `expected_backend`
+- `predicted_backend`
+- `predicted_backends`
+- `is_correct`
+- `is_no_decision`
+- `route_method`
+- `expected_backend_rank`
+- `expected_backend_score`
+- `expected_backend_best_template_id`
+- `winning_backend`
+- `winning_backend_score`
+- `margin_to_win`
+- `matched_template_id`
+- `matched_template_accept`
+- `matched_template_margin`
+- `top_backend_ranking`
+- `top_template_ranking`
+- `score`
 
-Deterministic Feedback 的职责是说明“发生了什么”。
+### 9.2 Deterministic Feedback
 
-每个样本至少包含：
+Deterministic Feedback 的职责是说明“发生了什么”和“规则建议做什么”。
+
+结构：
+
+```json
+{
+  "feedback_type": "deterministic_feedback",
+  "action_type_definitions": {},
+  "batch_summary": {},
+  "case_feedback": [],
+  "batch_action_recommendations": []
+}
+```
+
+`case_feedback` 保留每条样本的主要 routing 事实、diagnosis 和 action recommendation。核心字段包括：
 
 - `case_id`
 - `question`
@@ -263,142 +364,148 @@ Deterministic Feedback 的职责是说明“发生了什么”。
 - `winning_backend_score`
 - `margin_to_win`
 - `matched_template_id`
+- `matched_template_accept`
+- `matched_template_margin`
+- `GEPA_case_score`
 - `top_backend_ranking`
 - `top_template_ranking`
 - `diagnosis`
 - `suggested_action_type`
+- `action_recommendation`
 
-batch 级摘要至少包含：
+`top_backend_ranking` 和 `top_template_ranking` 在 Deterministic Feedback 中只保留前 3 名。
 
-- `GEPA Score`
-- backend accuracy
-- macro backend recall
-- No Decision rate
-- template accept rate
-- per-backend recall
-- top confusion pairs
-- suspected overbroad templates
-- newly fixed cases
-- newly broken cases
+`batch_summary` 由 `summarize_outputs()` 生成，核心字段包括：
 
-### 8.3 Deterministic Feedback 规则
+- `gepa_score`
+- `mean_case_score`
+- `backend_accuracy`
+- `macro_backend_recall`
+- `expected_backend_top2_rate`
+- `expected_backend_margin_score`
+- `no_decision_rate`
+- `template_accept_rate`
+- `regression_count`
+- `regression_rate`
+- `regression_penalty`
+- `overbroad_penalty`
+- `per_backend_recall`
+- `top_confusion_pairs`
+- `suspected_overbroad_templates`
 
-规则应由固定代码生成。
+### 9.3 Deterministic Action
 
-推荐规则：
+固定代码生成以下 action type：
 
-| 条件 | diagnosis | suggested_action_type |
-|---|---|---|
-| expected backend rank > 2 | expected backend coverage is weak | add generalized query prototypes |
-| expected backend rank <= 2 且 margin_to_win 较小 | expected backend is close but lacks margin | add discriminative prototypes or hard negatives |
-| wrong backend score 明显领先 | wrong template may be overbroad | add hard negatives to wrong template |
-| expected backend rank == 1 但 No Decision | acceptance threshold may be too strict | small threshold adjustment |
-| No Decision | templates did not confidently accept the query | improve coverage without broad threshold lowering |
-| 同一 wrong template 多次误吸 | template is likely overbroad | add hard negatives and narrow prototypes |
-| 当前样本正确 | route should be preserved | avoid changes that reduce this behavior |
+| action type | 触发条件 | 含义 |
+| --- | --- | --- |
+| `preserve_behavior` | 当前样本正确 | 保持当前正确行为。 |
+| `lower_expected_accept_or_margin` | `No Decision` 且 expected backend 排第 1 | 小幅降低 expected template 的 accept 或 margin。 |
+| `add_discriminative_prototypes_or_hard_negatives` | expected backend 排前 2 且接近 winner | 增加可区分的正例 prototype 或 hard negative。 |
+| `add_expected_backend_prototypes` | `No Decision`，或 expected backend 排名弱 | 增加 expected backend 的泛化 prototypes。 |
+| `add_wrong_template_hard_negatives` | 错误 backend/template 接受了样本 | 给误吸 template 增加 hard negatives。 |
 
-### 8.4 LLM Feedback
+`batch_action_recommendations` 会把样本级 action 按 `(action_type, target_template_id, field)` 聚合，并记录 evidence case ids。
 
-LLM Feedback 的职责是说明“如何泛化修改”。
+### 9.4 LLM Feedback
 
-LLM Feedback 不直接访问 test set。
-LLM Feedback 不参与 score。
-LLM Feedback 不决定 Proposal 是否接受。
+LLM Feedback 的输入只有 Deterministic Feedback：
 
-LLM Feedback prompt 应要求：
+```json
+{
+  "deterministic_feedback": {}
+}
+```
 
-- 只基于 Deterministic Feedback 和提供的 summary。
-- 输出泛化建议，不输出新的 YAML。
-- 不复制具体 question。
-- 不包含具体人名、时间、事件细节。
-- 给出每个建议对应的 target template。
-- 说明建议修改的是 `query_prototypes`、`hard_negatives` 还是 threshold fields。
-- 对正确样本给出 preserve 提醒。
-- 对 Validator Feedback 给出优先修复建议。
+LLM Feedback 的职责是把规则诊断转成少量泛化编辑建议。它不输出 YAML，不参与打分，不决定 Proposal 是否接受。
+
+LLM Feedback prompt 要求：
+
+- 不复制 exact question、姓名、日期或事件细节。
+- 不逐条复述样本。
+- 以 `batch_action_recommendations` 为主要结构化信号，但不盲从。
+- 结合 `case_feedback` 和 `batch_summary` 做一致性检查。
+- 优先给出高影响、可泛化的建议。
+- 最多输出 5 条 `template_suggestions`，优先 1 到 3 条。
+- 字段名只能使用 `query_prototypes`、`hard_negatives`、`thresholds`。
+- action 只能使用 `add`、`rewrite`、`remove`、`increase`、`decrease`、`preserve`。
 
 LLM Feedback 输出示例：
 
 ```json
 {
   "feedback_type": "llm_feedback",
-  "summary": "Graph relation queries are under-covered, while one OpenViking personal fact template is absorbing relation-style questions.",
+  "summary": "Temporal queries are being absorbed by OpenViking templates, while correct personal fact behavior should be preserved.",
   "template_suggestions": [
     {
-      "template_id": "graph.entity_relation.v1",
+      "template_id": "temporal.timeline_fact.v1",
       "field": "query_prototypes",
       "action": "add",
-      "guidance": "Add generalized prototypes for questions asking about relationships, shared interests, and links between two people."
+      "priority": "high",
+      "guidance": "Add generalized prototypes for questions asking when a remembered personal event happened.",
+      "evidence": "Repeated temporal cases rank close to the winner but are not selected."
     },
     {
-      "template_id": "openviking.personal_fact.v1",
+      "template_id": "openviking.personal_fact_lookup.en.v2",
       "field": "hard_negatives",
       "action": "add",
-      "guidance": "Add hard negatives for questions whose main intent is a relation between two people rather than a personal attribute."
+      "priority": "medium",
+      "guidance": "Add hard negatives for timestamp-centered questions that should route to temporal templates.",
+      "evidence": "OpenViking absorbs temporal questions."
     }
   ],
   "preserve": [
-    "Do not weaken templates that correctly route personal preference questions to OpenViking."
+    "Preserve correct personal fact lookup behavior for non-temporal questions."
   ]
 }
 ```
 
-## 9. Generation Prompt
+## 10. Generation Prompt 和 Output Contract
 
-Generation Prompt 的职责是指导 GEPA 从 Parent 生成 Proposal。
+Generation Prompt 的目标是让 Proposal LLM 基于 Parent 和 Feedback 输出 Complete Editable Fields Bundle。
 
-Prompt 必须强调：
+Prompt 核心规则：
 
-- 任务是改进 matcher-only routing。
-- 不存在 LLM fallback。
-- Proposal 必须是完整 YAML Template Bundle。
-- 只允许修改白名单字段。
-- 不允许改变 template ownership。
-- 不允许删除或新增 template。
-- 不允许复制 minibatch question。
-- 修改应具有泛化性。
+- 优化 matcher-only routing。
+- 没有 LLM fallback。
+- 允许 multi-backend accept。
 - Validator Feedback 优先级最高。
+- LLM Feedback 是主要编辑参考，但不能与 Validator Feedback、Deterministic Feedback 或 Output Contract 冲突。
+- Deterministic Feedback 是证据和一致性检查。
 - 正确样本是 regression anchors。
+- 修改应修复泛化模式，不应过拟合当前 Minibatch。
+- 输出 Complete Editable Fields Bundle only。
 
-Generation Prompt 推荐结构：
+Output Contract 已嵌入 Generation Prompt，核心要求与第 7 节一致。
+
+## 11. GEPA Score
+
+### 11.1 样本级分数
+
+每条样本的 `GEPA_case_score` 来自 `score_case()`：
 
 ```text
-You are optimizing a YAML Template Bundle for a deterministic matcher.
-
-Goal:
-Improve matcher-only routing accuracy on future samples.
-
-Output:
-Return the complete YAML Template Bundle only.
-
-Allowed changes:
-- query_prototypes
-- hard_negatives
-- allowed threshold fields
-
-Forbidden changes:
-- template_id
-- target_backend
-- query_spec
-- adding or deleting templates
-- copying exact training questions
-
-Inputs:
-- Parent
-- Validator Feedback
-- Deterministic Feedback
-- LLM Feedback
-- Parent Val Summary
-- Initial Summary
-
-Decision rule:
-Prefer generalized template improvements that fix the current minibatch while preserving correct behavior.
+GEPA_case_score =
+  0.45 * backend_correct
++ 0.20 * expected_top2
++ 0.15 * margin_score
++ 0.10 * accepted
++ 0.10 * no_decision_control
 ```
 
-## 10. GEPA Score
+其中：
 
-`GEPA Score` 用于比较 Parent、Proposal 和 Candidate。
+```text
+backend_correct = 1 if predicted_backend == expected_backend else 0
+expected_top2 = 1 if expected_backend_rank in [1, 2] else 0
+accepted = 0 if No Decision else 1
+no_decision_control = accepted
+margin_score = clamp((margin_to_win + 0.15) / 0.30, 0, 1)
+```
 
-默认公式：
+### 11.2 批次级 GEPA Score
+
+Candidate 比较使用批次级 `GEPA Score`：
 
 ```text
 GEPA Score =
@@ -415,57 +522,129 @@ GEPA Score =
 其中：
 
 ```text
+template_accept_rate = 1 - no_decision_rate
 no_decision_control_score = 1 - no_decision_rate
+expected_backend_margin_score = mean(clamp((margin_to_win + 0.15) / 0.30, 0, 1))
 ```
 
-`regression_penalty` 惩罚 Parent 原本正确但 Proposal 改错的样本。
-
-`overbroad_penalty` 惩罚某个 template 在 batch 中集中误吸。
-
-本实验不设置 hard guard。Candidate 是否接受只看同 minibatch 上 Proposal 是否高于 Parent。
-
-## 11. Sampling
-
-先用 Initial 跑完整 train set，建立固定 sampling buckets。
-
-推荐 buckets：
+`regression_penalty` 只在同一 Minibatch 上比较 Proposal 和 Parent 时启用：
 
 ```text
-graph_correct
-graph_wrong
-temporal_correct
-temporal_wrong
-openviking_correct
-openviking_wrong
-no_decision_cases
-random_pool
+regression_count = Parent 正确但 Proposal 改错的样本数
+regression_rate = regression_count / batch_size
+regression_penalty = 0.20 * regression_rate
 ```
 
-每轮 minibatch size 默认 16。
-
-推荐配额：
-
-| bucket 类型 | 数量 |
-|---|---:|
-| initial wrong graph | 2 |
-| initial wrong temporal | 2 |
-| initial wrong openviking | 2 |
-| initial No Decision | 2 |
-| initial correct graph guard | 2 |
-| initial correct temporal guard | 2 |
-| initial correct openviking guard | 2 |
-| random balanced fill | 2 |
-
-每轮抽到的样本必须用当前 Parent 重新 routing。
-
-## 12. Candidate 选择
-
-### 12.1 Proposal 接受
-
-每轮比较：
+`overbroad_penalty` 惩罚单个 template 在 batch 中集中误吸：
 
 ```text
-Proposal GEPA Score on minibatch > Parent GEPA Score on same minibatch
+max_wrong_template_fraction = max_wrong_absorptions_by_template / batch_size
+overbroad_penalty = max(0, max_wrong_template_fraction - 0.35) * 0.20
+```
+
+## 12. Sampling
+
+当前实现支持两种 sampler：
+
+- `bucket_random`
+- `epoch`
+
+### 12.1 bucket_random
+
+`bucket_random` 先用 Initial 完整评估 train set，并按结果构建 buckets。
+
+bucket 定义：
+
+| bucket | 定义 |
+| --- | --- |
+| `graph_wrong` | expected 是 graph，且当前 routing 错误。 |
+| `temporal_wrong` | expected 是 temporal，且当前 routing 错误。 |
+| `openviking_wrong` | expected 是 openviking，且当前 routing 错误。 |
+| `no_decision_cases` | 当前 routing 是 No Decision。 |
+| `graph_correct` | expected 是 graph，且当前 routing 正确。 |
+| `temporal_correct` | expected 是 temporal，且当前 routing 正确。 |
+| `openviking_correct` | expected 是 openviking，且当前 routing 正确。 |
+| `random_pool` | 完整 train set。 |
+
+每个 bucket 存的是 train data id。
+
+固定配额：
+
+| bucket | quota |
+| --- | ---: |
+| `graph_wrong` | 2 |
+| `temporal_wrong` | 2 |
+| `openviking_wrong` | 2 |
+| `no_decision_cases` | 2 |
+| `graph_correct` | 2 |
+| `temporal_correct` | 2 |
+| `openviking_correct` | 2 |
+| `random_pool` | 2 |
+
+当 `batch_size = 16` 时，以上配额刚好填满一个 Minibatch。
+
+当 `batch_size > 16` 时，剩余位置从 `random_pool` 补满。例如 `batch_size = 32` 时，前 16 条来自固定 bucket 配额，后 16 条来自 `random_pool`。
+
+如果某个 bucket 为空，会回退到 `random_pool`。
+
+同一个 Minibatch 内默认不重复采样。bucket 内先打乱，再按 `(sample_freq, data_id)` 排序，因此优先选择累计采样次数较少的样本；采样次数相同则较小 `data_id` 优先。
+
+### 12.2 bucket refresh
+
+`bucket_random` 支持动态刷新：
+
+```text
+--bucket-refresh-after-accepted-candidates N
+```
+
+含义：自上次刷新后，每接受 N 个 Candidate，就用当前 best Candidate 重新评估完整 train set，并基于新的 Matcher Result 重建 buckets。
+
+默认值：
+
+```text
+N = 3
+```
+
+设置为 `0` 表示禁用刷新。
+
+刷新产物写入：
+
+```text
+reports/sampling_bucket_refreshes/
+```
+
+### 12.3 epoch
+
+`epoch` sampler 按 epoch 遍历 train set。
+
+每个 epoch：
+
+- shuffle 一次完整 train data ids。
+- 按 `batch_size` 切分。
+- 最后一个 batch 不足时，用累计采样次数较少的样本补齐。
+
+控制参数：
+
+```text
+--num-train-epochs K
+```
+
+epoch iteration 数：
+
+```text
+ceil(train_size / batch_size) * K
+```
+
+如果 `sampler = epoch` 且未显式设置 `--max-metric-calls`，runner 不设置 metric-call 上限，而是用 epoch iteration stopper 控制结束。
+
+## 13. Candidate 选择
+
+### 13.1 Proposal 接受
+
+每轮在同一个 Minibatch 上比较：
+
+```text
+Proposal GEPA Score > Parent GEPA Score
 ```
 
 如果成立：
@@ -477,15 +656,17 @@ Proposal GEPA Score on minibatch > Parent GEPA Score on same minibatch
 
 - Proposal 丢弃。
 
-### 12.2 Parent 选择
+### 13.2 Parent 选择
 
-默认策略：
+当前 GEPA 调用使用：
 
 ```text
-Parent = val set GEPA Score 最高的 Candidate
+candidate_selection_strategy = current_best
 ```
 
-### 12.3 最终选择
+因此 Parent 来自当前 val set GEPA Score 最好的 Candidate。
+
+### 13.3 Selected 选择
 
 预算结束后：
 
@@ -493,103 +674,80 @@ Parent = val set GEPA Score 最高的 Candidate
 Selected = val set GEPA Score 最高的 Candidate
 ```
 
-最终报告必须比较：
+最终报告比较：
 
 ```text
-Selected vs Initial on val
-Selected vs Initial on test
+Initial vs Selected on val
+Initial vs Selected on test
 ```
 
-## 13. 执行效率与恢复设置
+## 14. 停止条件与缓存
 
-本实验默认启用以下执行设置：
+停止条件：
 
-| 设置 | 默认值 | 含义 |
-|---|---:|---|
-| `num_threads` | 4 | GEPA / runner 用于并行执行 metric calls 的 worker 数。 |
-| `batch_size` | 16 | 每轮 GEPA 使用的 minibatch 大小。 |
-| `early_stop_rounds` | 20 | 连续 20 个合法 Proposal 未刷新 best val GEPA Score 时停止优化。 |
-| `max_invalid_proposals` | 5 | 连续 5 个 Proposal 未通过 Validator 时停止优化并输出 Validator failure report。 |
-| `template_embedding_cache` | enabled | 复用 Template Bundle 的 embedding 结果。 |
-| `question_embedding_cache` | enabled | 复用 question 的 embedding 结果。 |
-| `parallel_val_eval` | enabled | 使用 `num_threads` 并行评估 val set。 |
-| `candidate_eval_cache` | enabled | 避免重复评估相同 Candidate。 |
-| `Run Resume` | enabled | 允许从已有 run 目录恢复优化。 |
+| 参数 | 默认值 | 含义 |
+| --- | ---: | --- |
+| `--max-metric-calls` | dry-run 为 96，full 为 5000，epoch 未设置时为无限制 | GEPA metric call 上限。 |
+| `--early-stop-rounds` | 20 | 连续若干轮未提升 best val score 后停止。 |
+| `--max-invalid-proposals` | 5 | 连续 Validator 失败达到上限后停止。 |
+| `--target-accepted-candidates` | 未设置 | 达到指定 accepted Candidate 数后停止；该数量不包含 Initial。 |
+| `--num-train-epochs` | 1 | epoch sampler 的训练集遍历次数。 |
 
-缓存 key 设计：
+缓存：
+
+| 缓存 | 作用 |
+| --- | --- |
+| `question_embedding_cache` | 缓存 question embedding。 |
+| `template_embedding_cache` | 按 Template Bundle hash 缓存 template embedding。 |
+| `candidate_eval_cache` | 缓存 Candidate 在同一 case id 集合上的评估结果。 |
+
+GEPA 自带 per-example cache 在本实验中关闭：
 
 ```text
-question_embedding_cache key =
-  hash(question, embedding_config)
-
-template_embedding_cache key =
-  hash(template_bundle, embedding_config)
-
-candidate_eval_cache key =
-  hash(candidate, split_name, split_hash, evaluator_config)
+cache_evaluation = False
 ```
 
-并行执行约束：
+原因是本实验的 score 是 batch-level aggregate，并重复写入每个样本；train / val DataLoader ids 也可能重叠。当前实现使用 adapter-level candidate eval cache。
 
-- `num_threads` 只用于 metric calls 和 matcher evaluation，不用于并行生成 Proposal。
-- LLM Feedback 和 Proposal 生成保持串行，避免不同轮次的 feedback 互相污染。
-- `parallel_val_eval` 必须保持结果聚合顺序稳定。
-- 每个 worker 必须使用独立临时目录和日志文件。
-- Candidate、split 和 evaluator config 未变化时，优先读取 `candidate_eval_cache`。
+## 15. 数据
 
-Run Resume 必须恢复：
-
-- Candidate pool。
-- 当前 Selected。
-- GEPA metric call 计数。
-- random seed 和 sampler 状态。
-- Validator failure 计数。
-- `early_stop_rounds` 计数。
-- cache manifest。
-
-恢复时必须校验 config snapshot。如果当前 CLI 参数和原 run 的 config snapshot 不一致，runner 应拒绝恢复。
-
-## 14. 数据准备
-
-建议实现入口：
-
-```text
-scripts/prepare_memrouter_template_yaml_gepa_dataset.py
-```
-
-输入：
-
-```text
-benchmarks/locomo/data/locomo_e2e_route_labels.v2.jsonl
-```
-
-输出：
+当前 runner 使用的输入路径：
 
 ```text
 benchmarks/locomo/data/gepa_template_yaml/
   locomo_v2_template.train.jsonl
   locomo_v2_template.val.jsonl
   locomo_v2_template.test.jsonl
-  locomo_v2_template.manifest.json
-  locomo_v2_template.data_report.md
 ```
 
-要求：
+每行 JSONL 至少包含：
 
-- split 只包含 train / val / test。
-- 默认按 `sample_id` 分组切分，避免同一 conversation 同时出现在不同 split。
-- manifest 记录 input hash、seed、split ratios、backend 分布、category 分布和 warnings。
-- 由于 LoCoMo 只有 10 个 conversation，正式报告应记录 seed，并建议多 seed repeat。
+```json
+{
+  "case_id": "conv-42_Q1",
+  "sample_id": "conv-42",
+  "scenario": "...",
+  "category": "...",
+  "question": "...",
+  "expected_backend": "openviking_memory_backend"
+}
+```
 
-## 15. Runner
+`train set` 用于生成 feedback 和采样 Minibatch。
+`val set` 用于选择 Candidate 和 Selected。
+`test set` 只用于最终评估。
 
-建议实现入口：
+## 16. Runner
+
+入口脚本：
 
 ```text
 scripts/optimize_memrouter_template_yaml_gepa.py
 ```
 
-Dry-run：
+`--matcher-config` 当前是兼容参数：runner 会解析并写入 config snapshot，但当前实现不读取该文件来改变 matcher 行为。
+
+### 16.1 Dry-run
 
 ```bash
 uv run python scripts/optimize_memrouter_template_yaml_gepa.py \
@@ -602,6 +760,8 @@ uv run python scripts/optimize_memrouter_template_yaml_gepa.py \
   --matcher-config configs/memrouter_matcher.yaml \
   --runs-dir runs/memrouter_template_yaml_gepa \
   --batch-size 16 \
+  --sampler bucket_random \
+  --bucket-refresh-after-accepted-candidates 3 \
   --num-threads 4 \
   --early-stop-rounds 20 \
   --max-invalid-proposals 5 \
@@ -615,7 +775,7 @@ uv run python scripts/optimize_memrouter_template_yaml_gepa.py \
   --dry-run-test-limit 24
 ```
 
-Full run：
+### 16.2 Full run with bucket_random
 
 ```bash
 uv run python scripts/optimize_memrouter_template_yaml_gepa.py \
@@ -627,7 +787,9 @@ uv run python scripts/optimize_memrouter_template_yaml_gepa.py \
   --template-dir echomem/templates_data \
   --matcher-config configs/memrouter_matcher.yaml \
   --runs-dir runs/memrouter_template_yaml_gepa \
-  --batch-size 16 \
+  --batch-size 32 \
+  --sampler bucket_random \
+  --bucket-refresh-after-accepted-candidates 3 \
   --num-threads 4 \
   --early-stop-rounds 20 \
   --max-invalid-proposals 5 \
@@ -636,29 +798,56 @@ uv run python scripts/optimize_memrouter_template_yaml_gepa.py \
   --enable-candidate-eval-cache \
   --parallel-val-eval \
   --seed 13 \
-  --max-metric-calls 5000 \
-  --target-accepted-candidates 15
+  --max-metric-calls 50000
 ```
 
-`max_metric_calls` 需要按 val size 调整。若 val set 约 300 条，15 个 accepted Candidate 通常需要数千次 metric call。
+### 16.3 Full run with epoch
 
-恢复已有 run：
+```bash
+uv run python scripts/optimize_memrouter_template_yaml_gepa.py \
+  --profile full \
+  --config configs/memrouter_gepa.local.yaml \
+  --train benchmarks/locomo/data/gepa_template_yaml/locomo_v2_template.train.jsonl \
+  --val benchmarks/locomo/data/gepa_template_yaml/locomo_v2_template.val.jsonl \
+  --test benchmarks/locomo/data/gepa_template_yaml/locomo_v2_template.test.jsonl \
+  --template-dir echomem/templates_data \
+  --matcher-config configs/memrouter_matcher.yaml \
+  --runs-dir runs/memrouter_template_yaml_gepa \
+  --batch-size 32 \
+  --sampler epoch \
+  --num-train-epochs 5 \
+  --num-threads 4 \
+  --early-stop-rounds 20 \
+  --max-invalid-proposals 5 \
+  --enable-template-embedding-cache \
+  --enable-question-embedding-cache \
+  --enable-candidate-eval-cache \
+  --parallel-val-eval \
+  --seed 13
+```
+
+epoch 模式下如果不传 `--max-metric-calls`，主循环由 `--num-train-epochs` 控制。
+
+### 16.4 Resume
 
 ```bash
 uv run python scripts/optimize_memrouter_template_yaml_gepa.py \
   --resume-run runs/memrouter_template_yaml_gepa/<run_id>
 ```
 
-`--resume-run` 只从 run 目录读取 config snapshot，不允许用新的 CLI 参数隐式覆盖旧配置。
+`--resume-run` 会读取 run 目录中的 `config_snapshot.yaml`。当前实现不允许同时传入其他 CLI override。
 
-## 16. 产物
+## 17. Run 产物
 
-推荐 run 目录：
+典型 run 目录：
 
 ```text
 runs/memrouter_template_yaml_gepa/<run_id>/
   config_snapshot.yaml
   split_summary.json
+  sampling_config.json
+  sampling_buckets.json
+  gepa_result.json
   run_state.json
   cache_manifest.json
   cache/
@@ -666,80 +855,80 @@ runs/memrouter_template_yaml_gepa/<run_id>/
     template_embeddings/
     candidate_eval/
   tmp/
-    worker_0/
-    worker_1/
-    worker_2/
-    worker_3/
+    validated_bundles/
   initial/
     train_eval/
+      summary.json
+      results.json
+      results.jsonl
     val_eval/
     test_eval/
-  sampling_buckets.json
   candidates/
     cand_0000_initial/
       templates/
-      val_eval/
+      candidate.json
     cand_0001/
       templates/
-      validator_report.json
-      minibatch_eval.json
-      val_eval/
-      candidate_summary.md
+      candidate.json
   selected/
     templates/
     val_eval/
+      summary.json
+      results.json
+      results.jsonl
     test_eval/
+      summary.json
+      results.json
+      results.jsonl
   reports/
     optimization_trace.jsonl
+    feedback_records.jsonl
+    lm_calls.jsonl
+    gepa_run_log.txt
     candidate_scores.csv
-    validator_failures.jsonl
     selected_vs_initial.md
+    proposals/
+    proposal_diffs/
+    sampling_bucket_refreshes/
 ```
 
-最小报告包含：
+`selected_vs_initial.md` 至少包含：
 
-- Initial val / test metrics。
-- Selected val / test metrics。
-- Selected 相对 Initial 的 delta。
-- accepted / rejected Proposal 数量。
-- Validator failure 数量和主要原因。
-- per-backend recall。
+- best candidate index。
+- total candidates。
+- total metric calls。
+- Validator failures。
+- candidate eval cache hits / misses。
+- Initial 和 Selected 在 val / test 上的 GEPA Score。
 - backend accuracy。
+- macro backend recall。
 - No Decision rate。
 - template accept rate。
-- top confusion pairs。
-- suspected overbroad templates。
-- 每个 Candidate 的 val GEPA Score。
-- cache hit rate。
-- resume status。
+- Selected 相比 Initial 的 delta。
 
-## 17. 实施清单
+`sampling_bucket_refreshes/` 中每次 refresh 会记录：
 
-1. 实现 train / val / test 数据准备脚本。
-2. 实现 matcher-only evaluator，禁用 LLM fallback。
-3. 实现 Matcher Result schema。
-4. 实现 GEPA Score。
-5. 实现 Deterministic Feedback。
-6. 实现 LLM Feedback prompt 和 parser。
-7. 实现 Generation Prompt。
-8. 实现 Proposal YAML 输出读取。
-9. 实现 Validator。
-10. 实现 Validator Feedback 回流。
-11. 实现 sampling buckets 和 minibatch sampler。
-12. 实现 Candidate pool。
-13. 实现 `num_threads=4` 的 matcher evaluation 并行。
-14. 实现 question / template / candidate eval 缓存。
-15. 实现 Run Resume。
-16. 实现 Selected vs Initial 报告。
+- 当前 best Candidate。
+- 完整 train set refresh summary。
+- 重建后的 sampling buckets。
+- 对应 train results。
 
-## 18. 后续升级
+`lm_calls.jsonl` 记录 LLM request / response 和 Proposal merge diagnostics。
 
-如果本实验有效，再考虑：
+`feedback_records.jsonl` 记录每轮用于 Proposal LLM 的 feedback 内容，包括 Matcher outputs、Deterministic Feedback、LLM Feedback 和 reflective dataset record。
 
-- 多 seed repeat。
-- 动态刷新 sampling buckets。
-- 引入 Pareto Parent selection。
-- 增加 hard guard。
-- 加入 per-template precision。
-- 加入 backend-specific LLM Feedback prompt。
-- 在 matcher 支持后开放更多 template 字段。
+## 18. 结果解读
+
+主要看：
+
+- `backend_accuracy`：primary predicted backend 是否等于 expected backend。
+- `macro_backend_recall`：三个 backend 的 recall 是否均衡。
+- `template_accept_rate`：非 No Decision 的比例。
+- `no_decision_rate`：未接受任何 backend 的比例。
+- `top_confusion_pairs`：主要 backend 混淆方向。
+- `suspected_overbroad_templates`：集中误吸的 template。
+- `validator_failure_count`：Proposal LLM 输出与 Output Contract / schema 的冲突频率。
+
+`template_accept_rate` 提升不一定代表 routing quality 提升。如果大量 No Decision 被错误 backend 吸收，`template_accept_rate` 会升高，但 `backend_accuracy` 和 `macro_backend_recall` 会暴露问题。
+
+`temporal_wrong` 等 wrong bucket 在后期可能变大。原因是前期大量样本在 `no_decision_cases` 中；后期覆盖率提升后，这些样本会被路由到某个 backend，其中错误路由会显性进入对应 wrong bucket。
